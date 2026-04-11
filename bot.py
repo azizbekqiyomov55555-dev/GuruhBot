@@ -50,9 +50,10 @@ ADMIN_IDS    = [8537782289]
 BOT_NAME     = "Yordamchi Bot"
 
 # ── Pyrogram sozlamalari (my.telegram.org) ─────────────
-API_ID       = 37366974
-API_HASH     = "08d09c7ed8b7cb414ed6a99c104f1bd6"
-PHONE_NUMBER = "+999777326306"   # Admin akkaunt
+API_ID         = 37366974
+API_HASH       = "08d09c7ed8b7cb414ed6a99c104f1bd6"
+# ✅ Lokal skript bilan olingan string session (PHONE_NUMBER o'rniga)
+SESSION_STRING = "BU_YERGA_SESSION_STRING_YOZING"
 
 # ── Guruh ID lari ──────────────────────────────────────
 LIVE_GROUP_IDS = [
@@ -444,10 +445,10 @@ async def post_init(application: Application) -> None:
     global pyro_app
     logger.info("🔌 Pyrogram ulanmoqda...")
     pyro_app = PyroClient(
-        "guruhbot_session",
+        name="guruhbot_session",
         api_id=API_ID,
         api_hash=API_HASH,
-        phone_number=PHONE_NUMBER,
+        session_string=SESSION_STRING,
     )
     await pyro_app.start()
     logger.info("✅ Pyrogram ulandi!")
