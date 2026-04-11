@@ -141,13 +141,20 @@ async def pyro_is_video_chat_active(chat_id: int) -> bool:
 
 
 async def start_all_video_chats() -> dict:
-    """Barcha guruhlarda jonli efirni yoqadi."""
+    """Barcha guruhlarda jonli efirni yoqadi. Xato bo'lsa o'tkazib yuboradi."""
     results = {}
     for gid in LIVE_GROUP_IDS:
-        ok = await pyro_create_video_chat(gid, LIVE_TITLE)
-        results[gid] = ok
-        if not ok:
-            await asyncio.sleep(2)
+        try:
+            ok = await pyro_create_video_chat(gid, LIVE_TITLE)
+            results[gid] = ok
+            if ok:
+                logger.info(f"✅ Jonli efir yoqildi: {gid}")
+            else:
+                logger.warning(f"⚠️ Yoqilmadi (ruxsat yo'q?): {gid}")
+        except Exception as e:
+            logger.error(f"❌ Xato ({gid}): {e}")
+            results[gid] = False
+        await asyncio.sleep(1)
     return results
 
 
@@ -405,16 +412,21 @@ async def monitor_live_stream(context: ContextTypes.DEFAULT_TYPE) -> None:
 
         if not active:
             logger.warning(f"⚠️ Jonli efir o'chgan ({gid}), qayta yoqilmoqda...")
-            ok = await pyro_create_video_chat(gid, LIVE_TITLE)
-            if ok:
-                try:
-                    await context.bot.send_message(
-                        chat_id=gid,
-                        text="🔴 <b>Jonli efir avtomatik qayta yoqildi!</b>\n📡 24/7 ishlaydi!",
-                        parse_mode=ParseMode.HTML
-                    )
-                except Exception:
-                    pass
+            try:
+                ok = await pyro_create_video_chat(gid, LIVE_TITLE)
+                if ok:
+                    try:
+                        await context.bot.send_message(
+                            chat_id=gid,
+                            text="🔴 <b>Jonli efir avtomatik qayta yoqildi!</b>\n📡 24/7 ishlaydi!",
+                            parse_mode=ParseMode.HTML
+                        )
+                    except Exception:
+                        pass
+                else:
+                    logger.warning(f"⚠️ Ruxsat yo'q, o'tkazib yuborildi: {gid}")
+            except Exception as e:
+                logger.error(f"❌ Monitor xato ({gid}): {e}")
         else:
             logger.info(f"✅ Jonli efir faol: {gid}")
 
