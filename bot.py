@@ -1,1380 +1,1080 @@
+# ╔══════════════════════════════════════════════════════════════╗
+# ║           🤖 YORDAMCHI GURUH BOT — TO'LIQ VERSIYA           ║
+# ║                  Barcha funksiyalar yoqilgan                 ║
+# ╚══════════════════════════════════════════════════════════════╝
+#
+# 💡 MASLAHATLAR:
+#   1. Botni guruhga ADMIN sifatida qo'shing
+#   2. @BotFather → Bot Settings → Group Privacy → DISABLE qiling
+#   3. Token va Admin ID ni hech kimga bermang!
+#   4. Yangi so'z qo'shish: RESPONSES lug'atiga qo'shing
+#   5. {name} — foydalanuvchi ismiga avtomatik almashadi
+
 import logging
 import sqlite3
 import random
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
 from telegram.ext import (
-    Application, CommandHandler, MessageHandler, CallbackQueryHandler,
-    ChatMemberHandler, ContextTypes, filters
+    Application, CommandHandler, MessageHandler,
+    CallbackQueryHandler, ChatMemberHandler, ContextTypes, filters
 )
 from telegram.constants import ParseMode
 
-# ===================== SOZLAMALAR =====================
+# ═══════════════════════════════════════════════════════
+#                      ⚙️ SOZLAMALAR
+# ═══════════════════════════════════════════════════════
 BOT_TOKEN = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"
 ADMIN_IDS = [8537782289]
+BOT_NAME  = "Yordamchi Bot"
 
-# ===================== JAVOBLAR BAZASI =====================
-# Format: "kalit so'z" : ["javob1", "javob2", "javob3", ...]
+# ═══════════════════════════════════════════════════════
+#                  💬 AVTOMATIK JAVOBLAR BAZASI
+# ═══════════════════════════════════════════════════════
 RESPONSES = {
-    # --- SALOMLASHUVLAR ---
-    "salom": [
-        "Vaalaykum assalom! 😊",
-        "Assalomu alaykum! Xush kelibsiz! 👋",
-        "Salom-salom! Qandaysiz? 😄",
-        "Vaalaykum! Yaxshi kunlar tilaman! ☀️",
-        "Hey, salom! Nima gap? 😎",
+
+    # ── SALOMLASHUVLAR ──────────────────────────────────
+    "assalomu alaykum": [
+        "Va alaykum assalom va rahmatulloh, {name}! 🤲✨",
+        "Va alaykum assalom, {name}! Xayrli kun! 😊",
+        "Assalomu alaykum {name}! Yaxshi keldingiz! 🌟",
     ],
     "assalom": [
-        "Vaalaykum assalom! 🙏",
-        "Assalomu alaykum! Yaxshi keldingiz! 😊",
-        "Vaalaykum! Xush kelibsiz guruhga! 🌟",
-        "Assalom! Xayrli kun! ☀️",
+        "Va alaykum assalom, {name}! 🙏😊",
+        "Assalomdan ham yaxshi so'z yo'q, {name}! ✨",
+        "Va alaykum {name}! Xayrli kun! ☀️",
+        "Assalomu alaykum {name}! Xush kelibsiz! 🌟",
     ],
-    "assalomu alaykum": [
-        "Va alaykum assalom va rahmatulloh! 🤲",
-        "Va alaykum assalom! Xayrli kun! 😊",
-        "Vaalaykum assalom! Yaxshi keldingiz! 🌟",
-    ],
-    "xayrli kun": [
-        "Sizga ham xayrli kun! ☀️😊",
-        "Xayrli kun! Omad tilayman! 🌟",
-        "Xayrli kun! Kayfiyatingiz yaxshi bo'lsin! 😄",
-        "Rahmat! Sizga ham baxtli kun! 🌈",
-    ],
-    "xayrli kech": [
-        "Sizga ham xayrli kech! 🌙✨",
-        "Xayrli kech! Yaxshi dam oling! 😊",
-        "Xayrli oqshom! 🌃",
+    "salom": [
+        "Va alaykum assalom, {name}! 😊",
+        "Salom-salom {name}! Qandaysiz? 😄",
+        "Vaalaykum {name}! Yaxshi kunlar tilaman! ☀️",
+        "Hey {name}, salom! Kayfiyat qanday? 😎",
+        "Salom {name}! Bugun ham zo'r kun bo'lsin! ✨",
+        "Vaalaykum assalom {name}! 👋🌟",
     ],
     "xayrli tong": [
-        "Sizga ham xayrli tong! ☀️🌸",
-        "Xayrli tong! Yangi kun yangi imkoniyatlar! 🌅",
-        "Tong muborak! Omadli kun bo'lsin! 😊",
+        "Xayrli tong {name}! ☀️🌸 Yangi kun yangi imkoniyat!",
+        "Tong muborak {name}! ☀️ Omadli kun bo'lsin!",
+        "{name}, xayrli tong! 🌅 Kofengiz tayyor bo'lsin! ☕",
+        "Xayrli tong! 🌅 {name}, bugun ajoyib kun bo'ladi!",
+    ],
+    "xayrli kun": [
+        "Sizga ham xayrli kun {name}! ☀️😊",
+        "Xayrli kun {name}! 🌟 Kayfiyat a'lo bo'lsin!",
+        "Rahmat {name}! Sizga ham baxtli kun! 🌈",
+        "{name}, xayrli kun! Omad har doim sizda bo'lsin! 🍀",
+    ],
+    "xayrli kech": [
+        "Xayrli kech {name}! 🌙✨ Yaxshi dam oling!",
+        "{name}, xayrli oqshom! 🌃 Charchagan bo'lsangiz dam oling!",
+        "Xayrli kech {name}! 🌙 Tinch tun bo'lsin!",
     ],
     "привет": [
-        "Привет! 😊 (Salom!)",
-        "Здравствуйте! Xush kelibsiz! 👋",
-        "Привет-привет! Как дела? 😄",
+        "Привет {name}! 😊",
+        "Привет-привет {name}! Как дела? 😄",
+        "Здравствуй {name}! Xush kelibsiz! 👋",
     ],
     "hello": [
-        "Hello! 👋 Welcome!",
-        "Hi there! 😊",
-        "Hey! Salom! 🌟",
+        "Hello {name}! 👋 Welcome!",
+        "Hey {name}! 😊 Nice to meet you!",
+        "Hi {name}! Salom! 🌟",
     ],
     "hi": [
-        "Hi! 👋",
-        "Hey! Salom! 😊",
-        "Hello! Xush kelibsiz! 🌟",
+        "Hi {name}! 👋",
+        "Hey {name}! 😊",
+        "Hello {name}! 🌟",
+    ],
+    "ало": [
+        "Alo {name}! 📞 Eshityapman!",
+        "Ha {name}! Nima gap? 😄",
+    ],
+    "alo": [
+        "Alo {name}! 📞 Ha, eshityapman!",
+        "Ha {name}! Nima deysan? 😊",
+        "Eshityapman {name}! 👂",
     ],
 
-    # --- XAYR AYTISH ---
+    # ── XAYRLASHUVLAR ───────────────────────────────────
     "xayr": [
-        "Xayr! Ko'rishguncha! 👋",
-        "Xayr-xayr! Eson-omon yuring! 😊",
-        "Hayr! Yaxshi keting! 🌟",
-        "Ko'rishguncha! Sog' bo'ling! 🙏",
+        "Xayr {name}! 👋 Ko'rishguncha! Eson-omon yuring!",
+        "Xayr-xayr {name}! 🌟 Sog' bo'ling!",
+        "{name}, ko'rishguncha! 👋 Yaxshi keting!",
+        "Xayr {name}! Omad bilan! 🍀",
     ],
     "hayr": [
-        "Hayr! Ko'rishguncha! 👋",
-        "Eson-omon yuring! 🌟",
-        "Xayr! Yaxshi keting! 😊",
-    ],
-    "yaxshi kecha": [
-        "Sizga ham yaxshi kecha! 🌙✨",
-        "Yaxshi uxlang! Chiroyli tushlar! 😴🌙",
-        "Yaxshi kecha! Tinch uxlang! 🌃",
+        "Hayr {name}! Ko'rishguncha! 👋",
+        "Eson-omon yuring {name}! 🌟",
     ],
     "bye": [
-        "Bye! Ko'rishguncha! 👋",
-        "See you! Xayr! 😊",
-        "Bye-bye! 🌟",
+        "Bye {name}! Ko'rishguncha! 👋",
+        "See you {name}! 😊",
+        "Bye-bye {name}! 🌟",
+    ],
+    "yaxshi kecha": [
+        "Yaxshi kecha {name}! 🌙✨ Chiroyli tushlar!",
+        "{name}, tinch uxlang! 😴🌙",
+        "Yaxshi uxlang {name}! 🌙",
     ],
 
-    # --- HOLINI SO'RASH ---
+    # ── HOLINI SO'RASH ───────────────────────────────────
     "qalaysiz": [
-        "Yaxshi, rahmat! Siz-chi? 😊",
-        "Ajoyib! Sizga ham yaxshilik tilayman! 🌟",
-        "Hammasi zo'r! Siz qalaysiz? 😄",
-        "Yaxshi-yaxshi! 😊 Siz-chi, yaxshimisiz?",
+        "Yaxshi rahmat! {name}, siz-chi? 😊",
+        "Ajoyib! {name}, sizga ham yaxshilik tilayman! 🌟",
+        "Hammasi zo'r {name}! Siz qalaysiz? 😄",
+        "Yaxshi-yaxshi! {name}, siz ham yaxshimisiz? 😊",
     ],
     "qalay": [
-        "Yaxshi, rahmat! 😊 Siz-chi?",
-        "Zo'r! Hammasi joyida! 💪",
-        "Ajoyib kayfiyatda! 🌟 Siz-chi?",
+        "Yaxshi rahmat {name}! Siz-chi? 😊",
+        "Zo'r! {name}, hammasi joyida! 💪",
+        "Ajoyib kayfiyatda {name}! Siz-chi? 🌟",
     ],
     "yaxshimisiz": [
-        "Yaxshi, rahmat! Siz ham yaxshi bo'ling! 😊",
-        "Ha, juda yaxshi! Rahmat! 🌟",
-        "Yaxshi! Sizga ham yaxshilik! 💫",
-    ],
-    "nima gap": [
-        "Hech gap yo'q, tinch! 😄",
-        "Hammasi yaxshi, siz-chi? 😊",
-        "Gap yo'q! Yaxshi kunlar! ☀️",
-        "Tinchlik! Nima yangiliklar? 🌟",
+        "Ha yaxshi! {name}, siz ham yaxshi bo'ling! 😊",
+        "Juda yaxshi rahmat {name}! 🌟",
+        "Yaxshi! {name}, sizga ham yaxshilik! 💫",
     ],
     "как дела": [
-        "Отлично! Спасибо! 😊 (Zo'r!)",
-        "Всё хорошо! 🌟 (Hammasi yaxshi!)",
-        "Хорошо, спасибо! А у вас? 😄",
+        "Отлично {name}! Спасибо! 😊",
+        "Всё хорошо {name}! 🌟 А у вас?",
+    ],
+    "nima gap": [
+        "{name}, hech gap yo'q, tinch! 😄",
+        "Hammasi yaxshi {name}! Siz-chi? 😊",
+        "Gap yo'q {name}! Yaxshi kunlar! ☀️",
+        "Tinchlik {name}! Nima yangiliklar? 🌟",
     ],
     "how are you": [
-        "I'm great, thanks! 😊",
-        "Fine, thank you! And you? 🌟",
-        "Doing well! Thanks for asking! 😄",
+        "I'm great {name}! Thanks! 😊",
+        "Fine, thank you {name}! And you? 🌟",
     ],
 
-    # --- MINNATDORLIK ---
+    # ── MINNATDORLIK ─────────────────────────────────────
     "rahmat": [
-        "Arzimaydi! 😊",
-        "Marhamat! 🌟",
-        "Iltimos! Doimo xizmatda! 💫",
-        "Xursand bo'ldim! 😄",
-        "Hech gap emas! 👍",
+        "Arzimaydi {name}! 😊 Doimo xizmatda!",
+        "Marhamat {name}! 🌟",
+        "Iltimos {name}! Kerak bo'lsa yana ayting! 💫",
+        "Xursand bo'ldim {name}! 😄",
+        "Hech gap emas {name}! 👍",
     ],
     "raxmat": [
-        "Arzimaydi! 😊",
-        "Marhamat! 🌟",
-        "Iltimos! 💫",
+        "Arzimaydi {name}! 😊",
+        "Marhamat {name}! 🌟",
+        "Iltimos {name}! 💫",
     ],
     "спасибо": [
-        "Пожалуйста! 😊 (Marhamat!)",
-        "Не за что! 🌟",
-        "Всегда пожалуйста! 💫",
+        "Пожалуйста {name}! 😊",
+        "Не за что {name}! 🌟",
     ],
     "thank you": [
-        "You're welcome! 😊",
-        "No problem! 🌟",
-        "Anytime! 💫",
+        "You're welcome {name}! 😊",
+        "No problem {name}! 🌟",
     ],
     "thanks": [
-        "Sure thing! 😊",
-        "No worries! 🌟",
-        "Welcome! 👍",
+        "Sure thing {name}! 😊",
+        "No worries {name}! 🌟",
     ],
 
-    # --- KECHIRASIZ ---
+    # ── KECHIRASIZ ───────────────────────────────────────
     "kechirasiz": [
-        "Hech gap emas! 😊",
-        "Ayb yo'q! 🌟",
-        "Muammo yo'q! 😄",
+        "{name}, hech gap emas! 😊",
+        "Ayb yo'q {name}! 🌟",
+        "Muammo yo'q {name}! 😄",
     ],
     "uzr": [
-        "Hech gap emas! 😊",
-        "Ayb yo'q, muammo yo'q! 🌟",
-        "Mayli! 😄",
-    ],
-    "извини": [
-        "Всё нормально! 😊 (Hech gap emas!)",
-        "Не переживай! 🌟",
+        "Hech gap emas {name}! 😊",
+        "Ayb yo'q {name}, muammo yo'q! 🌟",
+        "Mayli {name}! 😄",
     ],
 
-    # --- MAQTOV / KOMPLIMENT ---
+    # ── MAQTOV ───────────────────────────────────────────
     "zo'r": [
-        "Ha, rostdan ham zo'r! 💪🔥",
-        "Ajoyib! 🌟",
-        "Zo'r-zo'r! 👏",
+        "Ha {name}, rostdan ham zo'r! 💪🔥",
+        "Ajoyib {name}! 🌟",
+        "Zo'r-zo'r {name}! 👏",
     ],
     "super": [
-        "Super-super! 🔥💯",
-        "Juda zo'r! 🌟👏",
-        "Ajoyib! Super! ✨",
-    ],
-    "yaxshi": [
-        "Zo'r! 👍😊",
-        "Juda yaxshi! 🌟",
-        "Ajoyib! 😄",
-    ],
-    "bravo": [
-        "Bravo-bravo! 👏🎉",
-        "Zo'r! Tabriklayman! 🏆",
-        "Juda ajoyib! 🌟👏",
+        "Super-super {name}! 🔥💯",
+        "{name}, juda zo'r! 🌟👏",
+        "Ajoyib {name}! ✨",
     ],
     "ajoyib": [
-        "Ha, chindan ham ajoyib! 🌟✨",
-        "Zo'r! 😄",
-        "Ajoyib-ajoyib! 💫",
+        "Ha {name}, chindan ham ajoyib! 🌟✨",
+        "Zo'r {name}! 😄",
     ],
-    "молодец": [
-        "Спасибо! 😊 Juda yaxshi!",
-        "Благодарю! 🌟",
-        "Рад стараться! 💪",
+    "bravo": [
+        "Bravo {name}! 👏🎉",
+        "Juda ajoyib {name}! 🌟👏",
     ],
-
-    # --- HAZIL / KULGULARLAR ---
-    "haha": [
-        "😄😄 Ha-ha, kulgi yuqumli!",
-        "🤣 Kulgidan yiqilib tushayapman!",
-        "😂 Qiziq-qiziq!",
-    ],
-    "lol": [
-        "😂 LOL!",
-        "🤣 Juda kulgili!",
-        "😄 Ha-ha!",
-    ],
-    "😂": [
-        "😂😂 Kulgili ekan!",
-        "🤣 Men ham kulyapman!",
-        "😄 Qiziqchilik!",
-    ],
-    "хаха": [
-        "😄 Ha-ha!",
-        "🤣 Kulgili!",
-        "😂",
-    ],
-
-    # --- SAVOL SO'ZLARI ---
-    "nima": [
-        "Nima haqida gaplashyapmiz? 🤔",
-        "Yaxshilab tushuntiring, eshityapman! 👂",
-        "Qiziqarli savol! 🤔 Aytib bering!",
-    ],
-    "kim": [
-        "Kim haqida so'rayapsiz? 🤔",
-        "Aniqroq aytsa bo'ladimi? 😊",
-    ],
-    "qachon": [
-        "Vaqt haqida so'rayapsizmi? ⏰",
-        "Aniqroq savolingiz bormi? 🤔",
-    ],
-    "qayerda": [
-        "Joy haqida so'rayapsizmi? 📍",
-        "Qayerda ekanligini bilmayman 😅",
-    ],
-    "qanday": [
-        "Qanday qilib degani? 🤔",
-        "Tushuntirib bering, eshityapman! 👂",
-    ],
-    "nega": [
-        "Sababi... murakkab savol bu! 🤔",
-        "Yaxshi savol! Menam o'ylayman 😄",
-    ],
-    "nimaga": [
-        "Sababi bor albatta! 😄",
-        "Qiziqarli savol! 🤔",
-    ],
-
-    # --- SPORT ---
-    "futbol": [
-        "Futbol — eng yaxshi sport! ⚽🔥",
-        "Futbol sevaman! ⚽ Qaysi jamoa yoqadi?",
-        "Futbol haqida gapirsak bo'ladi! ⚽😄",
-    ],
-    "basketball": [
-        "Basketball! 🏀 Zo'r sport!",
-        "NBA ko'rasizmi? 🏀😊",
-    ],
-    "sport": [
-        "Sport — sog'liq! 💪🏃",
-        "Qaysi sportni yoqtirasiz? 🤸",
-        "Sport bilan shug'ullanish — zo'r! 💪",
-    ],
-    "gym": [
-        "Gym — juda yaxshi! 💪🏋️",
-        "Sog'lom tana — sog'lom aql! 💪",
-        "Zo'r! Gym — mening ham sevgilim! 🏋️",
-    ],
-
-    # --- OVQAT ---
-    "osh": [
-        "O'zbek oshi — dunyoning eng mazali taomi! 🍚😋",
-        "Osh desangiz, og'zim suv keldi! 🍚🔥",
-        "Mmmm, osh! Eng yaxshi ovqat! 😄",
-    ],
-    "ovqat": [
-        "Ovqat vaqti bo'ldimi? 😋🍽️",
-        "Nima eyapsiz? 😊",
-        "Qorin ochdi shekilli! 😄🍽️",
-    ],
-    "non": [
-        "Non — baraka! 🍞🙏",
-        "O'zbek noni — eng mazali! 😋",
-    ],
-    "shashlik": [
-        "Shashlik! 🍖🔥 Og'zim suv keldi!",
-        "Shashlik desangiz... boraman! 😄🔥",
-    ],
-    "pizza": [
-        "Pizza! 🍕 Juda mazali!",
-        "Pizza sevuvchilar — eng yaxshi odamlar! 🍕😄",
-    ],
-    "чай": [
-        "Чой ичiмizmi? ☕😊",
-        "Чой — umr barakasi! ☕",
-    ],
-    "чой": [
-        "Choy ichinglar, mehribon bo'lasizlar! ☕😊",
-        "Choy vaqti! ☕🌟",
-    ],
-
-    # --- TEXNOLOGIYA ---
-    "telegram": [
-        "Telegram — eng zo'r messenger! 📱✨",
-        "Telegram bor ekan, yaxshi! 😄📱",
-    ],
-    "internet": [
-        "Internet — zamonaviy hayot! 🌐💻",
-        "Internet tezligi yaxshimi? 😄🌐",
-    ],
-    "telefon": [
-        "Qaysi telefon ishlataysiz? 📱",
-        "Telefon — zamonaviy do'st! 📱😊",
-    ],
-    "kompyuter": [
-        "Kompyuter — zo'r asbob! 💻👨‍💻",
-        "Dasturlash o'rganayapsizmi? 💻😄",
-    ],
-
-    # --- MUSIQA ---
-    "musiqa": [
-        "Musiqa — ruhning ozuqasi! 🎵❤️",
-        "Qaysi musiqani yoqtirasiz? 🎵😊",
-        "Musiqa tinglash — ajoyib! 🎶",
-    ],
-    "kino": [
-        "Kino sevaman! 🎬😄",
-        "Qaysi janrdagi kino yoqadi? 🎬🍿",
-        "Kino kecha! 🎬🍿 Zo'r taklif!",
-    ],
-
-    # --- TABIIY JAVOBLAR ---
-    "ok": [
-        "Ok! 👍",
-        "Zo'r! ✅",
-        "Mayli! 😊",
-        "Tushunarli! 👍",
-    ],
-    "okay": [
-        "Okay! 👍😊",
-        "Zo'r! ✅",
-        "Mayli! 👌",
-    ],
-    "маъқул": [
-        "Zo'r! 👍",
-        "Mayli! 😊",
-    ],
-    "тушунарли": [
-        "Yaxshi! 👍",
-        "Zo'r! 😊",
-    ],
-    "ha": [
-        "Ha, to'g'ri! 👍",
-        "Albatta! 😊",
-        "Ha-ha! 🌟",
-    ],
-    "yo'q": [
-        "Mayli, muammo yo'q! 😊",
-        "Tushunarli! 👍",
-    ],
-    "bilmadim": [
-        "Hech gap emas, bilamiz! 😄",
-        "Bilib olamiz! 💪",
-        "Izlaymiz, topamiz! 🔍",
-    ],
-    "bilmayman": [
-        "Menam bilmayman 😅 Birgalikda o'rganamiz!",
-        "Google dost! 😄🔍",
-    ],
-    "🙏": [
-        "🙏 Arzimaydi!",
-        "🙏 Marhamat!",
-        "😊 Xursand bo'ldim!",
-    ],
-    "❤️": [
-        "❤️ Rahmat!",
-        "🥰 Siz ham!",
-        "💕 Xursand bo'ldim!",
-    ],
-    "👍": [
-        "👍 Zo'r!",
-        "✅ Yaxshi!",
-        "💪 Barakalla!",
-    ],
-
-    # --- TASHVISH / MUAMMO ---
-    "muammo": [
-        "Qanday muammo? Yordam berishga harakat qilaman! 💪",
-        "Muammo bo'lsa — birgalikda hal qilamiz! 🤝",
-    ],
-    "yordam": [
-        "Yordam beraman! Nima kerak? 😊",
-        "Xizmatda turaman! 💪",
-        "Qanday yordam kerak? 🌟",
-    ],
-    "qiyin": [
-        "Hamma narsa o'rganiladi! 💪😊",
-        "Qiyin emas, shunchaki yangi! 😄",
-        "Bardosh bering, bo'ladi! 💪",
-    ],
-    "charchad": [
-        "Dam oling, sog'liq muhim! 😊💤",
-        "Charchasangiz — dam olish vaqti! 🛋️",
-        "Sog'liq — eng katta boylik! 💪",
-    ],
-    "uxlayman": [
-        "Yaxshi uxlang! 😴🌙",
-        "Chiroyli tushlar! 🌙✨",
-        "Tinch uxlang! 😴",
-    ],
-    "yaxshimas": [
-        "Nima bo'ldi? Aytib bering! 😊",
-        "Muammo bo'lsa, gaplashsa bo'ladi! 🤝",
-    ],
-
-    # --- TABRIKLASH ---
-    "tabrik": [
-        "Tabriklayman! 🎉🎊",
-        "Muborak bo'lsin! 🎉",
-        "Baxt tilaman! 🌟🎊",
-    ],
-    "tug'ilgan kun": [
-        "Tug'ilgan kun muborak! 🎂🎉🎊",
-        "Ko'p yillar yashang! 🎂🎉",
-        "Baxtli tug'ilgan kun! 🎊🌟",
-    ],
-    "muborak": [
-        "Sizga ham muborak! 🎉😊",
-        "Muborak bo'lsin! 🌟🎊",
-    ],
-    "baxt": [
-        "Baxt hammaga nasib bo'lsin! 🌟😊",
-        "Baxtli bo'ling! 🌈💫",
-    ],
-
-    # --- LICH / PM SO'RASH ---
-    "lich yozing": [
-        "Yozing, eshityapman! 📩😊",
-        "DM ochiq, yuboring! 📨✨",
-        "Lichkaga yozing, javob beraman! 💬",
-        "Lich bo'yicha gaplashamiz! 📩🌟",
-        "Xabar yuboring, kutib turaman! 💌",
-    ],
-    "lich": [
-        "Lichkaga yuboring! 📩😊",
-        "DM ochiq! Yozing! 💬✨",
-        "Lich yuboring, eshitaman! 📨",
-    ],
-    "dm": [
-        "DM ochiq, yuboring! 📩😊",
-        "Direct message yuboring! 💬",
-        "Eshityapman, yozing! 📨",
-    ],
-    "yozing": [
-        "Ha, yuboring! Eshityapman 😊",
-        "Nima deyaysiz, yozing! 📩",
-        "Kutib turaman! ✍️",
-    ],
-
-    # --- MEHRIBON / DO'STONA SO'ZLAR ---
-    "asalim": [
-        "Asal bo'ling! 🍯😊",
-        "Menga yoqdi bu so'z 🍯💕",
-        "Shirin-shirin! 🍯✨",
-        "Asal kabi shirin bo'ling! 😄🍯",
-    ],
-    "jonim": [
-        "Jon bo'ling! ❤️😊",
-        "Jonga tegdi, rahmat! 💕",
-        "Jonginam! 🥰",
-        "Yaxshi gaplar eshitish yoqadi! 😊❤️",
-    ],
-    "azizim": [
-        "Aziz bo'ling! 💙😊",
-        "Menga ham aziz bo'ldingiz! 🌟",
-        "Rahmat, azizim! 💕",
-    ],
-    "qo'zim": [
-        "Qo'zichoq! 🐑😄",
-        "Qo'zicha mehribon bo'ling! 🐑💕",
-        "Yoqimli so'z! 😊",
-    ],
-    "hayotim": [
-        "Hayot go'zal! 🌸😊",
-        "Hayot — eng katta ne'mat! 🌟",
-        "Yaxshi hayot tilaman! 🌈",
-    ],
-    "sevaman": [
-        "Sevgi — go'zal his! ❤️😊",
-        "Baxtli bo'ling! 💕🌟",
-        "Sevgi bilan to'la bo'ling! ❤️",
-    ],
-    "sog'indim": [
-        "Sog'inish — yaxshi belgi! 🥺😊",
-        "Biz ham sog'indik! 💕",
-        "Ko'rishguncha! 🌟",
-    ],
-    "yaxshi ko'raman": [
-        "Yaxshi ko'rish — go'zal his! ❤️",
-        "Rahmat! Siz ham yaxshi bo'ling! 💕",
-        "Bu so'z yurakka yoqdi! 🥰",
-    ],
-    "do'stim": [
-        "Do'st — eng katta boylik! 🤝😊",
-        "Do'stlik muqaddas! 🤝🌟",
-        "Siz ham do'stimsiz! 💙",
-    ],
-    "aka": [
-        "Ha, aytingchi aka! 😊",
-        "Akam! Nima gap? 😄",
-        "Ha, eshityapman! 👂",
-    ],
-    "opa": [
-        "Ha, opam! Nima gap? 😊",
-        "Opam! Aytingchi! 😄",
-        "Eshityapman! 👂",
-    ],
-    "bro": [
-        "Bro! Nima gap? 😎",
-        "Ha bro! 🤜🤛",
-        "Bro, yaxshimisan? 😄",
-    ],
-    "sis": [
-        "Sis! Yaxshimisiz? 😊",
-        "Ha sis! 💕",
-        "Eshityapman! 😄",
-    ],
-
-    # --- KAYFIYAT ---
-    "kayfiyat": [
-        "Kayfiyat a'lo! 🌟😄 Sizchi?",
-        "Zo'r kayfiyatda! 🎉 Siz-chi?",
-        "Ajoyib! Kayfiyatingiz ham yaxshi bo'lsin! ☀️",
-    ],
-    "zerikdim": [
-        "Zerikmaslik uchun shu yerda gaplashamiz! 😄",
-        "Gaplashamiz, zeriktirmayman! 😎",
-        "Zerikish yo'q, biz bormiz! 🎉",
-    ],
-    "bored": [
-        "Zerikma, gaplash! 😄",
-        "Bu yerda qiziq! 🎉",
-    ],
-    "xursand": [
-        "Xursandchilik yuqumli! 😄🎉",
-        "Xursand bo'ling doim! 🌟",
-        "Xursandligingiz menga ham yuqdi! 😊",
-    ],
-    "g'amginman": [
-        "G'am ketsin! 🌈 Yaxshi kunlar keladi!",
-        "Sabr qiling, o'tib ketadi! 💪😊",
-        "Biz yoningdamiz! 🤝❤️",
-    ],
-    "yig'layapman": [
-        "Ko'z yoshi — kuchning belgisi! 💪",
-        "Hamma narsa o'tadi! 🌈 Sabr qiling!",
-        "Yoqimli kunlar keladi! ☀️",
-    ],
-    "xafa": [
-        "Xafa bo'lmang! 😊 Hamma yaxshi bo'ladi!",
-        "Xafachilik ketsin! 🌈",
-        "Yaxshi kunlar kutmoqda! ☀️💫",
-    ],
-    "yolg'iz": [
-        "Yolg'iz emassiz, biz bormiz! 😊🤝",
-        "Bu guruhda do'stlar ko'p! 🌟",
-        "Yolg'iz emas, birgamiz! 💙",
-    ],
-
-    # --- HAYOT / FALSAFA ---
-    "hayot": [
-        "Hayot go'zal, undan bahramand bo'ling! 🌸",
-        "Hayot — eng katta ne'mat! 🙏🌟",
-        "Hayotni sevib yashang! ❤️",
-    ],
-    "orzum": [
-        "Orzu qiling, intiling — bo'ladi! 💪🌟",
-        "Orzular uchish uchun qanotdir! 🦋",
-        "Orzuingiz amalga oshsin! 🌠",
-    ],
-    "maqsad": [
-        "Maqsadga erishish uchun harakat kerak! 💪",
-        "Maqsadli inson baxtli bo'ladi! 🌟",
-        "Maqsadingizga yeting! 🎯",
-    ],
-    "omad": [
-        "Omad tilaman! 🍀💫",
-        "Omad har doim o'z tarafingizda bo'lsin! 🍀",
-        "Omadli bo'ling! ✨🌟",
-    ],
-    "inshalloh": [
-        "Inshalloh, albatta bo'ladi! 🤲🌟",
-        "Inshalloh! 🤲",
-        "Alloh xohlasa, bo'ladi! 🤲✨",
-    ],
-    "mashalloh": [
-        "Mashalloh! 🤲🌟",
-        "Mashalloh, barakali bo'lsin! 🤲",
-    ],
-    "alhamdulillah": [
-        "Alhamdulillah! 🤲 Yaxshilik doim bo'lsin!",
-        "Alhamdulillah! 🤲🌟",
-    ],
-    "subhanalloh": [
-        "Subhanalloh! 🤲✨",
-        "Subhanalloh, go'zal! 🤲",
-    ],
-
-    # --- YOSH / MAKTAB ---
-    "maktab": [
-        "Maktab — bilim maskani! 📚😊",
-        "O'qing, bilim kuch! 📚💪",
-        "Maktab yillari eng yaxshi! 📚🌟",
-    ],
-    "dars": [
-        "Dars o'qidingizmi? 📚😊",
-        "Dars muhim, o'qing! 📚💡",
-        "Dars — kelajak poydevori! 📚",
-    ],
-    "imtihon": [
-        "Imtihon uchun omad! 📚🍀",
-        "O'qib tayyor bo'ling, bo'ladi! 💪📚",
-        "Omad tilayman imtihonda! 🍀✨",
-    ],
-    "universitet": [
-        "Universitet — katta hayot maktabi! 🎓😊",
-        "Barakali o'qishlar! 🎓🌟",
-    ],
-
-    # --- ISH / BIZNES ---
-    "ish": [
-        "Ishda muvaffaqiyat! 💼💪",
-        "Qanday ish? 😊",
-        "Ish — rizq! Barakali bo'lsin! 💼",
-    ],
-    "pul": [
-        "Pul topish uchun mehnat kerak! 💰💪",
-        "Barakali pul tilayman! 💰🌟",
-        "Pul — vosita, baxt — maqsad! 💰😊",
-    ],
-    "biznes": [
-        "Biznes qiling, muvaffaq bo'ling! 💼🌟",
-        "Zo'r! Biznes uchun omad! 💼💪",
-        "Biznes — kelajak! 💼✨",
-    ],
-
-    # --- TABIAT / OBHAVO ---
-    "ob-havo": [
-        "Havo qanday? ☀️🌤️",
-        "Yaxshi havo tilaman! ☀️😊",
-    ],
-    "yomg'ir": [
-        "Yomg'ir — baraka! 🌧️🙏",
-        "Yomg'irli kun, ichkarida o'tirib choy iching! ☕🌧️",
-    ],
-    "quyosh": [
-        "Quyosh kabi nur sochib yashang! ☀️😊",
-        "Quyoshli kun! ☀️🌟",
-    ],
-    "bahor": [
-        "Bahor — yangilanish fasli! 🌸😊",
-        "Bahor xayrli bo'lsin! 🌸🌷",
-    ],
-    "yoz": [
-        "Yoz — dam olish! ☀️😄",
-        "Yozda issiq, lekin go'zal! ☀️🌴",
-    ],
-    "qish": [
-        "Qishda iliq bo'ling! ❄️🧣",
-        "Qish sovuq, lekin shinam! ❄️☕",
-    ],
-    "kuz": [
-        "Kuz — rangli fasl! 🍂😊",
-        "Kuzda baraka ko'p! 🍂🌟",
-    ],
-
-    # --- OVQAT (QO'SHIMCHA) ---
-    "lag'mon": [
-        "Lag'mon! 🍜 Eng mazali! 😋",
-        "Lag'mon desangiz og'zim suv keldi! 🍜🔥",
-    ],
-    "somsa": [
-        "Somsa! 🥟 Issiq-issiq! 😋",
-        "Somsa vaqti bo'ldimi? 🥟😄",
-    ],
-    "chuchvara": [
-        "Chuchvara — milliy taom! 🥟😋",
-        "Chuchvara desangiz, boraman! 😄",
-    ],
-    "hamburger": [
-        "Hamburger! 🍔 Mazali!",
-        "Fast food vaqti! 🍔😄",
-    ],
-    "ichimlik": [
-        "Nima ichmoqchisiz? ☕🥤",
-        "Choy yoki qahva? ☕😊",
-    ],
-    "qahva": [
-        "Qahva! ☕ Energiya beradi!",
-        "Qahva vaqti! ☕😊",
-        "Qahva iching, hushyor bo'ling! ☕💪",
-    ],
-    "sharbat": [
-        "Sharbat! 🥤 Mazali va foydali!",
-        "Sharbat iching, sog' bo'ling! 🥤😊",
-    ],
-
-    # --- HAYVONLAR ---
-    "it": [
-        "It — sodiq do'st! 🐕😊",
-        "Itingiz bormi? 🐕",
-    ],
-    "mushuk": [
-        "Mushuk! 🐱 Juda yoqimli!",
-        "Mushuklar — eng muloyim hayvonlar! 🐱😊",
-    ],
-    "cat": [
-        "Cat! 🐱 So cute!",
-        "Meow! 🐱😄",
-    ],
-    "dog": [
-        "Dog! 🐕 Man's best friend!",
-        "Woof! 🐕😄",
-    ],
-
-    # --- IJOBIY UNDOV ---
-    "wow": [
-        "Wow! 😲✨ Ajoyib!",
-        "WOW! 🤩 Zo'r!",
-        "Wow-wow! 😮🌟",
-    ],
-    "omg": [
-        "OMG! 😲 Ishonmayman!",
-        "Voy! 😮✨",
-    ],
-    "voy": [
-        "Voy-voy! 😮 Nima bo'ldi?",
-        "Voy! Qiziqarli! 😲",
-    ],
-    "yey": [
-        "Yey! 🎉🎊",
-        "Yey-yey! Barakalla! 🥳",
-    ],
-    "ura": [
-        "Ura! 🎉💪",
-        "Ura-ura! Barakalla! 🎊🌟",
-    ],
-    "yashasin": [
-        "Yashasin! 🥳🎉",
-        "Yashasin-yashasin! 🎊💫",
-    ],
-
-    # --- SALBIY KAYFIYAT ---
-    "jahl": [
-        "Jahl — sog'liqqa zararli! 😊 Tinchlaning!",
-        "Tinchlaning, hamma narsa o'tadi! 💆",
-    ],
-    "jaxlim chiqdi": [
-        "Tinchlaning, bo'ladi! 😊💆",
-        "Jahl o'tib ketadi! Sabr! 🌈",
-    ],
-    "achindim": [
-        "Achinish — insoniylik! 🤝",
-        "Yaxshi odam ekansiz! 😊",
-    ],
-    "qo'rqdim": [
-        "Qo'rqmasdan olg'a! 💪😊",
-        "Qo'rquv — g'alaba oldida kamayadi! 💪",
-    ],
-    "esladim": [
-        "Yaxshi xotiralar doim qolsin! 🌟",
-        "Eslab turish — yaxshi! 💭😊",
-    ],
-
-    # --- KUNDALIK ---
-    "uyg'ondim": [
-        "Xayrli tong! ☀️ Yaxshi kun bo'lsin!",
-        "Uyg'oning muborak! ☀️😊",
-        "Yangi kun, yangi imkoniyat! 🌅",
-    ],
-    "nonushta": [
-        "Nonushtani yedingizmi? 🍽️😊",
-        "Yaxshi ishtaha! 🍽️✨",
-    ],
-    "tushlik": [
-        "Tushlik vaqti! 🍽️😋",
-        "Yaxshi ishtaha tilayman! 🍽️",
-    ],
-    "kechki ovqat": [
-        "Kechki ovqat vaqti! 🍽️😊",
-        "Yaxshi ishtaha! 🍽️🌙",
-    ],
-    "dam olaman": [
-        "Yaxshi dam oling! 🛋️😊",
-        "Dam olish muhim! 💆✨",
-    ],
-    "sayr": [
-        "Sayrda yaxshi dam oling! 🚶😊",
-        "Sayr — sog'liqqa yaxshi! 🚶💚",
-    ],
-
-    # --- IJTIMOIY ---
     "barakalla": [
-        "Barakalla! 👏🌟",
-        "Barakalla, zo'r! 👏😊",
+        "Barakalla {name}! 👏🌟",
+        "Barakalla, zo'r {name}! 👏😊",
+        "{name}, zo'r! Barakalla! 💫",
     ],
     "qoyil": [
-        "Qoyilmaqom! 👏✨",
-        "Qoyil, zo'r! 👏🌟",
+        "Qoyilmaqom {name}! 👏✨",
+        "Qoyil {name}, zo'r! 🌟",
+        "{name}, qoyil qoldirdingiz! 🤩",
     ],
-    "a'lo": [
-        "A'lo! 💯🌟",
-        "A'lo natija! 💯👏",
+    "молодец": [
+        "Спасибо {name}! 😊",
+        "Благодарю {name}! 🌟",
     ],
-    "hammasi joyida": [
-        "Yaxshi! Shunday bo'lsin doim! 😊🌟",
-        "Zo'r! 👍✨",
+
+    # ── HAZIL / KULGU ─────────────────────────────────────
+    "haha": [
+        "😄 {name}, ha-ha, kulgi yuqumli!",
+        "🤣 {name}, kulgidan yiqilib tushayapman!",
+        "😂 Qiziq-qiziq {name}!",
     ],
-    "tinchlik": [
-        "Tinchlikda! 😊 Siz-chi?",
-        "Tinch-totuv! 🕊️🌟",
+    "lol": [
+        "😂 LOL {name}!",
+        "🤣 {name}, juda kulgili!",
     ],
-    "gap yo'q": [
-        "Yaxshi! 😊👍",
-        "Zo'r, davom eting! 🌟",
+    "хаха": [
+        "😄 Ha-ha {name}!",
+        "🤣 Kulgili {name}!",
     ],
-    "endi": [
-        "Endi nima? 😊 Davom eting!",
-        "Ha, eshityapman! 👂",
+
+    # ── LICH / PM ─────────────────────────────────────────
+    "lich yozing": [
+        "Yozing {name}, eshityapman! 📩😊",
+        "DM ochiq {name}! Yuboring! 📨✨",
+        "Lichkaga yozing {name}, javob beraman! 💬",
+        "{name}, xabar yuboring, kutib turaman! 💌",
     ],
-    "lekin": [
-        "Lekin nima? 🤔 Gapiring!",
-        "Davom eting! 😊",
+    "lich": [
+        "{name}, lichkaga yuboring! 📩😊",
+        "DM ochiq {name}! Yozing! 💬✨",
+        "Lich yuboring {name}! 📨",
+    ],
+    "dm": [
+        "DM ochiq {name}! Yuboring! 📩😊",
+        "{name}, direct message yuboring! 💬",
+    ],
+
+    # ── MEHRIBON SO'ZLAR ──────────────────────────────────
+    "asalim": [
+        "Asal kabi shirin bo'ling {name}! 🍯😊",
+        "Voy {name}, asal! 🍯💕",
+        "{name}, shirin so'z yurakka yoqdi! 🍯✨",
+    ],
+    "jonim": [
+        "Jon bo'ling {name}! ❤️😊",
+        "Jonginam {name}! 🥰",
+        "{name}, yaxshi gaplar eshitish yoqadi! 😊❤️",
+    ],
+    "azizim": [
+        "Aziz bo'ling {name}! 💙😊",
+        "{name}, menga ham aziz bo'ldingiz! 🌟",
+    ],
+    "qo'zim": [
+        "Qo'zichoq {name}! 🐑😄",
+        "{name}, yoqimli so'z! 😊💕",
+    ],
+    "sevaman": [
+        "Sevgi go'zal his {name}! ❤️😊",
+        "Baxtli bo'ling {name}! 💕🌟",
+    ],
+    "sog'indim": [
+        "Sog'inish yaxshi belgi {name}! 🥺😊",
+        "{name}, biz ham sog'indik! 💕",
+    ],
+    "do'stim": [
+        "Do'st eng katta boylik {name}! 🤝😊",
+        "Do'stlik muqaddas {name}! 🤝🌟",
+    ],
+    "aka": [
+        "Ha aka {name}! Nima gap? 😊",
+        "Akam {name}! Aytingchi! 😄",
+    ],
+    "opa": [
+        "Ha opa {name}! Nima gap? 😊",
+        "Opam {name}! Aytingchi! 😄",
+    ],
+    "bro": [
+        "Bro {name}! Nima gap? 😎",
+        "Ha bro {name}! 🤜🤛",
+    ],
+    "sis": [
+        "Sis {name}! Yaxshimisiz? 😊",
+        "Ha sis {name}! 💕",
+    ],
+    "yaxshi ko'raman": [
+        "Rahmat {name}! Bu so'z yurakka yoqdi! 🥰❤️",
+        "{name}, siz ham yaxshi bo'ling! 💕",
+    ],
+
+    # ── KAYFIYAT ─────────────────────────────────────────
+    "kayfiyat": [
+        "Kayfiyat a'lo {name}! 🌟😄 Sizchi?",
+        "Zo'r kayfiyatda {name}! 🎉 Siz-chi?",
+        "{name}, kayfiyatingiz yaxshi bo'lsin! ☀️",
+    ],
+    "zerikdim": [
+        "{name}, zerikmaslik uchun shu yerda gaplashamiz! 😄",
+        "Zerikmang {name}, gaplashamiz! 😎",
+        "{name}, zerikish yo'q, biz bormiz! 🎉",
+    ],
+    "xursand": [
+        "{name}, xursandchilik yuqumli! 😄🎉",
+        "Xursand bo'ling {name}, doim! 🌟",
+    ],
+    "xafa": [
+        "{name}, xafa bo'lmang! 😊 Hamma yaxshi bo'ladi!",
+        "Xafachilik ketsin {name}! 🌈",
+        "{name}, yaxshi kunlar kutmoqda! ☀️💫",
+    ],
+    "g'amginman": [
+        "{name}, g'am ketsin! 🌈 Yaxshi kunlar keladi!",
+        "Sabr qiling {name}, o'tib ketadi! 💪😊",
+        "{name}, biz yoningdamiz! 🤝❤️",
+    ],
+    "yolg'iz": [
+        "{name}, yolg'iz emassiz, biz bormiz! 😊🤝",
+        "Bu guruhda do'stlar ko'p {name}! 🌟",
+    ],
+    "charchad": [
+        "{name}, dam oling, sog'liq muhim! 😊💤",
+        "Charchasangiz dam olish vaqti {name}! 🛋️",
+    ],
+    "uxlayman": [
+        "{name}, yaxshi uxlang! 😴🌙",
+        "Chiroyli tushlar {name}! 🌙✨",
+        "{name}, tinch uxlang! 😴",
+    ],
+    "yig'layapman": [
+        "{name}, ko'z yoshi — kuchning belgisi! 💪",
+        "Hamma narsa o'tadi {name}! 🌈 Sabr qiling!",
+    ],
+
+    # ── TABIIY JAVOBLAR ───────────────────────────────────
+    "ok": [
+        "Ok {name}! 👍",
+        "Zo'r {name}! ✅",
+        "Mayli {name}! 😊",
+        "Tushunarli {name}! 👍",
+    ],
+    "okay": [
+        "Okay {name}! 👍😊",
+        "Mayli {name}! 👌",
+    ],
+    "ha": [
+        "Ha, to'g'ri {name}! 👍",
+        "Albatta {name}! 😊",
+        "{name}, ha! 🌟",
     ],
     "albatta": [
-        "Albatta-albatta! ✅😊",
-        "Ha, albatta! 🌟",
+        "Albatta-albatta {name}! ✅😊",
+        "Ha albatta {name}! 🌟",
+        "{name}, shubhasiz! 💫",
     ],
-    "umuman": [
-        "Umuman olganda — yaxshi! 😊",
-        "Ha, to'g'ri! 👍",
+    "omad": [
+        "Omad tilayman {name}! 🍀💫",
+        "{name}, omad har doim sizda bo'lsin! 🍀",
+        "Omadli bo'ling {name}! ✨🌟",
+    ],
+    "bilmadim": [
+        "{name}, hech gap emas, bilamiz! 😄",
+        "Bilib olamiz {name}! 💪",
+        "Izlaymiz, topamiz {name}! 🔍",
+    ],
+    "bilmayman": [
+        "{name}, menam bilmayman 😅 Birgalikda o'rganamiz!",
+        "Google dost {name}! 😄🔍",
+    ],
+    "wow": [
+        "Wow {name}! 😲✨ Ajoyib!",
+        "WOW {name}! 🤩 Zo'r!",
+    ],
+    "voy": [
+        "Voy {name}! 😮 Nima bo'ldi?",
+        "{name}, qiziqarli! 😮✨",
+    ],
+    "ura": [
+        "Ura {name}! 🎉💪",
+        "Ura-ura {name}! 🎊🌟",
+    ],
+    "yey": [
+        "Yey {name}! 🎉🎊",
+        "Yey-yey {name}! 🥳",
+    ],
+    "yashasin": [
+        "Yashasin {name}! 🥳🎉",
+        "{name}, yashasin-yashasin! 🎊💫",
+    ],
+    "a'lo": [
+        "A'lo {name}! 💯🌟",
+        "A'lo natija {name}! 💯👏",
+    ],
+
+    # ── DUA SO'ZLARI ─────────────────────────────────────
+    "inshalloh": [
+        "Inshalloh, albatta bo'ladi {name}! 🤲🌟",
+        "Inshalloh {name}! 🤲",
+        "{name}, Alloh xohlasa bo'ladi! 🤲✨",
+    ],
+    "mashalloh": [
+        "Mashalloh {name}! 🤲🌟",
+        "Mashalloh, barakali bo'lsin {name}! 🤲",
+    ],
+    "alhamdulillah": [
+        "Alhamdulillah {name}! 🤲 Yaxshilik doim bo'lsin!",
+        "Alhamdulillah {name}! 🤲🌟",
+    ],
+    "subhanalloh": [
+        "Subhanalloh {name}! 🤲✨",
+        "Subhanalloh {name}, go'zal! 🤲",
+    ],
+
+    # ── TABRIKLASH ───────────────────────────────────────
+    "tabrik": [
+        "Tabriklayman {name}! 🎉🎊",
+        "Muborak bo'lsin {name}! 🎉",
+        "Baxt tilaman {name}! 🌟🎊",
+    ],
+    "tug'ilgan kun": [
+        "Tug'ilgan kun muborak {name}! 🎂🎉🎊",
+        "Ko'p yillar yashang {name}! 🎂🎉",
+        "{name}, baxtli tug'ilgan kun! 🎊🌟",
+    ],
+    "muborak": [
+        "Sizga ham muborak {name}! 🎉😊",
+        "Muborak bo'lsin {name}! 🌟🎊",
+    ],
+
+    # ── SAVOL SO'ZLARI ────────────────────────────────────
+    "nima": [
+        "{name}, nima haqida gaplashyapmiz? 🤔",
+        "{name}, yaxshilab tushuntiring! 👂",
+        "Qiziqarli savol {name}! 🤔",
+    ],
+    "nega": [
+        "{name}, sababi bor albatta! 😄",
+        "Qiziqarli savol {name}! 🤔",
+    ],
+    "qanday": [
+        "{name}, qanday qilib? 🤔",
+        "Tushuntirib bering {name}! 👂",
+    ],
+    "kim": [
+        "Kim haqida so'rayapsiz {name}? 🤔",
+        "{name}, aniqroq aysangiz? 😊",
+    ],
+    "qachon": [
+        "{name}, vaqt haqida? ⏰",
+        "Aniqroq savolingiz bormi {name}? 🤔",
+    ],
+    "qayerda": [
+        "{name}, joy haqida? 📍",
+        "Aniqroq aytib bering {name}! 🤔",
+    ],
+
+    # ── SPORT ─────────────────────────────────────────────
+    "futbol": [
+        "Futbol — eng yaxshi sport {name}! ⚽🔥",
+        "Futbol sevaman {name}! ⚽ Qaysi jamoa yoqadi?",
+        "{name}, futbol haqida gapirsak bo'ladi! ⚽😄",
+    ],
+    "sport": [
+        "Sport — sog'liq {name}! 💪🏃",
+        "{name}, qaysi sportni yoqtirasiz? 🤸",
+        "Sport bilan shug'ullanish zo'r {name}! 💪",
+    ],
+    "gym": [
+        "Gym zo'r {name}! 💪🏋️",
+        "{name}, sog'lom tana — sog'lom aql! 💪",
+    ],
+    "basketbol": [
+        "Basketball {name}! 🏀 Zo'r sport!",
+        "{name}, NBA ko'rasizmi? 🏀😊",
+    ],
+
+    # ── OVQAT ─────────────────────────────────────────────
+    "osh": [
+        "O'zbek oshi dunyoning eng mazali taomi {name}! 🍚😋",
+        "{name}, osh desangiz og'zim suv keldi! 🍚🔥",
+    ],
+    "lag'mon": [
+        "Lag'mon {name}! 🍜 Eng mazali! 😋",
+        "{name}, lag'mon desangiz og'zim suv keldi! 🍜🔥",
+    ],
+    "somsa": [
+        "Somsa {name}! 🥟 Issiq-issiq! 😋",
+        "{name}, somsa vaqti bo'ldimi? 🥟😄",
+    ],
+    "pizza": [
+        "Pizza {name}! 🍕 Juda mazali!",
+        "{name}, pizza sevuvchilar eng yaxshi odamlar! 🍕😄",
+    ],
+    "qahva": [
+        "Qahva {name}! ☕ Energiya beradi!",
+        "{name}, qahva vaqti! ☕😊",
+    ],
+    "choy": [
+        "{name}, choy — umr barakasi! ☕🙏",
+        "Choy vaqti {name}! ☕😊",
+        "{name}, issiq choy iching! ☕",
+    ],
+    "shashlik": [
+        "Shashlik {name}! 🍖🔥 Og'zim suv keldi!",
+        "{name}, shashlik desangiz boraman! 😄🔥",
+    ],
+    "ovqat": [
+        "{name}, ovqat vaqti bo'ldimi? 😋🍽️",
+        "Nima eyapsiz {name}? 😊",
+    ],
+
+    # ── TEXNOLOGIYA / TA'LIM ──────────────────────────────
+    "telegram": [
+        "Telegram — eng zo'r messenger {name}! 📱✨",
+        "{name}, Telegram bor ekan, yaxshi! 😄📱",
+    ],
+    "dasturlash": [
+        "Dasturlash zo'r kasb {name}! 💻👨‍💻",
+        "{name}, dasturlash o'rganish tavsiya! 💻🚀",
+    ],
+    "maktab": [
+        "Maktab bilim maskani {name}! 📚😊",
+        "O'qing {name}, bilim kuch! 📚💪",
+    ],
+    "dars": [
+        "{name}, dars o'qidingizmi? 📚😊",
+        "Dars muhim {name}, o'qing! 📚💡",
+    ],
+    "imtihon": [
+        "{name}, imtihon uchun omad! 📚🍀",
+        "{name}, omad tilayman imtihonda! 🍀✨",
+    ],
+    "universitet": [
+        "Universitet katta hayot maktabi {name}! 🎓😊",
+        "Barakali o'qishlar {name}! 🎓🌟",
+    ],
+
+    # ── ISH / PUL ─────────────────────────────────────────
+    "ish": [
+        "{name}, ishda muvaffaqiyat! 💼💪",
+        "Barakali ish bo'lsin {name}! 💼",
+    ],
+    "pul": [
+        "Barakali pul tilayman {name}! 💰🌟",
+        "{name}, pul topish uchun mehnat kerak! 💰💪",
+    ],
+    "biznes": [
+        "{name}, biznes qiling, muvaffaq bo'ling! 💼🌟",
+        "Zo'r {name}! Biznes uchun omad! 💼💪",
+    ],
+
+    # ── MUSIQA / KINO ─────────────────────────────────────
+    "musiqa": [
+        "Musiqa ruhning ozuqasi {name}! 🎵❤️",
+        "{name}, qaysi musiqani yoqtirasiz? 🎵😊",
+    ],
+    "kino": [
+        "Kino sevaman {name}! 🎬😄",
+        "{name}, qaysi janrdagi kino yoqadi? 🎬🍿",
+    ],
+
+    # ── OB-HAVO ───────────────────────────────────────────
+    "yomg'ir": [
+        "{name}, yomg'ir baraka! 🌧️🙏",
+        "{name}, yomg'irli kun — ichkarida choy! ☕🌧️",
+    ],
+    "quyosh": [
+        "Quyosh kabi nur sochib yashang {name}! ☀️😊",
+        "{name}, quyoshli kun! ☀️🌟",
+    ],
+    "issiq": [
+        "{name}, issiqda ko'p suv iching! 💧😊",
+        "{name}, issiqda ehtiyot bo'ling! ☀️💧",
+    ],
+    "sovuq": [
+        "{name}, sovuqda iliq kiyining! 🧥❄️",
+        "{name}, sovuqdan ehtiyot bo'ling! ❄️🧣",
+    ],
+    "bahor": [
+        "Bahor yangilanish fasli {name}! 🌸😊",
+        "Bahor xayrli bo'lsin {name}! 🌸🌷",
+    ],
+    "yoz": [
+        "Yoz dam olish {name}! ☀️😄",
+        "{name}, yozda suvga tush! 🏊☀️",
+    ],
+    "qish": [
+        "{name}, qishda iliq bo'ling! ❄️🧣",
+        "Qish sovuq lekin shinam {name}! ❄️☕",
+    ],
+    "kuz": [
+        "Kuz rangli fasl {name}! 🍂😊",
+        "{name}, kuzda baraka ko'p! 🍂🌟",
+    ],
+
+    # ── KUNDALIK ──────────────────────────────────────────
+    "uyg'ondim": [
+        "Xayrli tong {name}! ☀️ Yaxshi kun bo'lsin!",
+        "{name}, uyg'oning muborak! ☀️😊",
+        "Yangi kun yangi imkoniyat {name}! 🌅",
+    ],
+    "dam olaman": [
+        "{name}, yaxshi dam oling! 🛋️😊",
+        "Dam olish muhim {name}! 💆✨",
+    ],
+    "sayr": [
+        "{name}, sayrda yaxshi dam oling! 🚶😊",
+        "Sayr sog'liqqa yaxshi {name}! 🚶💚",
+    ],
+
+    # ── HAYOT / ILHOM ─────────────────────────────────────
+    "hayot": [
+        "Hayot go'zal {name}, undan bahramand bo'ling! 🌸",
+        "{name}, hayot eng katta ne'mat! 🙏🌟",
+        "Hayotni sevib yashang {name}! ❤️",
+    ],
+    "orzum": [
+        "{name}, orzu qiling, intiling — bo'ladi! 💪🌟",
+        "Orzular uchish uchun qanotdir {name}! 🦋",
+        "{name}, orzuingiz amalga oshsin! 🌠",
+    ],
+    "maqsad": [
+        "Maqsadga erishish uchun harakat kerak {name}! 💪",
+        "{name}, maqsadli inson baxtli bo'ladi! 🌟",
+    ],
+
+    # ── HAYVONLAR ─────────────────────────────────────────
+    "mushuk": [
+        "Mushuk {name}! 🐱 Juda yoqimli!",
+        "{name}, mushuklar eng muloyim hayvonlar! 🐱😊",
+    ],
+    "it": [
+        "It sodiq do'st {name}! 🐕😊",
+        "{name}, itingiz bormi? 🐕",
+    ],
+
+    # ── EMOJI JAVOBLARI ───────────────────────────────────
+    "🙏": [
+        "🙏 Arzimaydi {name}!",
+        "🙏 Marhamat {name}!",
+        "😊 Xursand bo'ldim {name}!",
+    ],
+    "❤️": [
+        "❤️ Rahmat {name}!",
+        "🥰 Siz ham {name}!",
+        "💕 Xursand bo'ldim {name}!",
+    ],
+    "👍": [
+        "👍 Zo'r {name}!",
+        "✅ Yaxshi {name}!",
+        "💪 Barakalla {name}!",
+    ],
+    "🔥": [
+        "🔥🔥 {name}, zo'r!",
+        "{name} 🔥 Zo'r!",
+    ],
+    "💪": [
+        "💪💪 {name}, kuchli!",
+        "Ha {name}, kuch-quvvat! 💪",
+    ],
+    "😍": [
+        "😍 Yoqimli {name}!",
+        "🥰 Zo'r {name}!",
+    ],
+    "🎉": [
+        "🎉🎊 {name}, tabriklayman!",
+        "Bayram {name}! 🎉",
     ],
 }
 
-def get_auto_reply(text: str, user_name: str) -> str | None:
-    """Kalit so'z bo'yicha javob topadi, topsa random birini qaytaradi"""
-    text_lower = text.lower().strip()
 
-    # To'liq mos
-    for keyword, replies in RESPONSES.items():
-        if keyword in text_lower:
-            return random.choice(replies)
-
+# ═══════════════════════════════════════════════════════
+#              🔍 JAVOB IZLASH (uzun kalitdan boshlab)
+# ═══════════════════════════════════════════════════════
+def get_auto_reply(text: str, user_name: str):
+    t = text.lower().strip()
+    for kw in sorted(RESPONSES, key=len, reverse=True):
+        if kw in t:
+            reply = random.choice(RESPONSES[kw])
+            return reply.replace("{name}", user_name)
     return None
 
-# ===================== LOGGING =====================
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-    level=logging.INFO
-)
-logger = logging.getLogger(__name__)
 
-# ===================== DATABASE =====================
+# ═══════════════════════════════════════════════════════
+#                      📦 DATABASE
+# ═══════════════════════════════════════════════════════
 def init_db():
     conn = sqlite3.connect("bot_data.db")
     c = conn.cursor()
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS groups (
-            chat_id     INTEGER PRIMARY KEY,
-            title       TEXT,
-            username    TEXT,
-            member_count INTEGER DEFAULT 0,
-            added_date  TEXT,
-            is_banned   INTEGER DEFAULT 0,
-            ban_reason  TEXT DEFAULT ''
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS messages (
-            id          INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id     INTEGER,
-            user_id     INTEGER,
-            username    TEXT,
-            date        TEXT
-        )
-    """)
-    c.execute("""
-        CREATE TABLE IF NOT EXISTS settings (
-            key   TEXT PRIMARY KEY,
-            value TEXT
-        )
-    """)
-    # Default sozlama
-    c.execute("INSERT OR IGNORE INTO settings VALUES ('mention_mode', 'on')")
-    c.execute("INSERT OR IGNORE INTO settings VALUES ('mention_text', '👋 Salom {mention}, xush kelibsiz!')")
-    conn.commit()
-    conn.close()
+    c.execute("""CREATE TABLE IF NOT EXISTS groups (
+        chat_id INTEGER PRIMARY KEY, title TEXT, username TEXT,
+        member_count INTEGER DEFAULT 0, added_date TEXT,
+        is_banned INTEGER DEFAULT 0, ban_reason TEXT DEFAULT '')""")
+    c.execute("""CREATE TABLE IF NOT EXISTS messages (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER,
+        user_id INTEGER, username TEXT, date TEXT)""")
+    conn.commit(); conn.close()
 
-def get_db():
-    return sqlite3.connect("bot_data.db")
+def get_db(): return sqlite3.connect("bot_data.db")
 
 def add_group(chat_id, title, username):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("""
-        INSERT OR IGNORE INTO groups (chat_id, title, username, added_date)
-        VALUES (?, ?, ?, ?)
-    """, (chat_id, title, username or "", datetime.now().strftime("%Y-%m-%d %H:%M")))
-    conn.commit()
-    conn.close()
-
-def update_group_title(chat_id, title):
-    conn = get_db()
-    c = conn.cursor()
+    conn = get_db(); c = conn.cursor()
+    c.execute("INSERT OR IGNORE INTO groups (chat_id,title,username,added_date) VALUES (?,?,?,?)",
+              (chat_id, title, username or "", datetime.now().strftime("%Y-%m-%d %H:%M")))
     c.execute("UPDATE groups SET title=? WHERE chat_id=?", (title, chat_id))
-    conn.commit()
-    conn.close()
+    conn.commit(); conn.close()
 
 def ban_group(chat_id, reason=""):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE groups SET is_banned=1, ban_reason=? WHERE chat_id=?", (reason, chat_id))
-    conn.commit()
-    conn.close()
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE groups SET is_banned=1,ban_reason=? WHERE chat_id=?", (reason, chat_id))
+    conn.commit(); conn.close()
 
 def unban_group(chat_id):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("UPDATE groups SET is_banned=0, ban_reason='' WHERE chat_id=?", (chat_id,))
-    conn.commit()
-    conn.close()
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE groups SET is_banned=0,ban_reason='' WHERE chat_id=?", (chat_id,))
+    conn.commit(); conn.close()
 
 def is_banned(chat_id):
-    conn = get_db()
-    c = conn.cursor()
+    conn = get_db(); c = conn.cursor()
     c.execute("SELECT is_banned FROM groups WHERE chat_id=?", (chat_id,))
-    row = c.fetchone()
-    conn.close()
+    row = c.fetchone(); conn.close()
     return row and row[0] == 1
 
 def get_all_groups():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT chat_id, title, username, member_count, added_date, is_banned, ban_reason FROM groups")
-    rows = c.fetchall()
-    conn.close()
-    return rows
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT chat_id,title,username,member_count,added_date,is_banned,ban_reason FROM groups")
+    rows = c.fetchall(); conn.close(); return rows
 
 def get_stats():
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT COUNT(*) FROM groups WHERE is_banned=0")
-    active = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM groups WHERE is_banned=1")
-    banned = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM messages")
-    total_msg = c.fetchone()[0]
-    c.execute("SELECT COUNT(*) FROM messages WHERE date >= date('now')")
-    today_msg = c.fetchone()[0]
-    conn.close()
-    return active, banned, total_msg, today_msg
-
-def get_setting(key):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("SELECT value FROM settings WHERE key=?", (key,))
-    row = c.fetchone()
-    conn.close()
-    return row[0] if row else None
-
-def set_setting(key, value):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute("INSERT OR REPLACE INTO settings VALUES (?,?)", (key, value))
-    conn.commit()
-    conn.close()
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT COUNT(*) FROM groups WHERE is_banned=0"); active = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM groups WHERE is_banned=1"); banned = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM messages"); total = c.fetchone()[0]
+    c.execute("SELECT COUNT(*) FROM messages WHERE date >= date('now')"); today = c.fetchone()[0]
+    conn.close(); return active, banned, total, today
 
 def log_message(chat_id, user_id, username):
-    conn = get_db()
-    c = conn.cursor()
-    c.execute(
-        "INSERT INTO messages (chat_id, user_id, username, date) VALUES (?,?,?,?)",
-        (chat_id, user_id, username, datetime.now().strftime("%Y-%m-%d %H:%M"))
-    )
-    conn.commit()
-    conn.close()
+    conn = get_db(); c = conn.cursor()
+    c.execute("INSERT INTO messages (chat_id,user_id,username,date) VALUES (?,?,?,?)",
+              (chat_id, user_id, username, datetime.now().strftime("%Y-%m-%d %H:%M")))
+    conn.commit(); conn.close()
 
-# ===================== HELPERS =====================
-def is_admin(user_id):
-    return user_id in ADMIN_IDS
 
-def admin_keyboard():
-    keyboard = [
+# ═══════════════════════════════════════════════════════
+#                    🛠️ YORDAMCHILAR
+# ═══════════════════════════════════════════════════════
+logging.basicConfig(format="%(asctime)s | %(levelname)s | %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+def is_admin(uid): return uid in ADMIN_IDS
+
+def admin_kb():
+    return InlineKeyboardMarkup([
         [InlineKeyboardButton("📊 Statistika", callback_data="stats"),
-         InlineKeyboardButton("👥 Guruhlar", callback_data="groups_list_0")],
-        [InlineKeyboardButton("🚫 Taqiqlangan", callback_data="banned_list"),
+         InlineKeyboardButton("👥 Guruhlar",   callback_data="groups_0")],
+        [InlineKeyboardButton("🚫 Taqiqlangan", callback_data="banned"),
          InlineKeyboardButton("⚙️ Sozlamalar", callback_data="settings")],
-        [InlineKeyboardButton("📢 Hammaga xabar", callback_data="broadcast_prompt")],
-    ]
-    return InlineKeyboardMarkup(keyboard)
+        [InlineKeyboardButton("📢 Broadcast", callback_data="broadcast_ask")],
+    ])
 
-# ===================== HANDLERS =====================
+def user_kb(bot_username):
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_username}?startgroup=true")],
+        [InlineKeyboardButton("❓ Qo'shilmadimi? — Qo'llanma", callback_data="how_to_add")],
+        [InlineKeyboardButton("🆘 Adminga yozish", callback_data="contact_admin")],
+    ])
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+# ═══════════════════════════════════════════════════════
+#                     📨 HANDLERLAR
+# ═══════════════════════════════════════════════════════
+
+async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_chat.type != "private": return
     user = update.effective_user
-    if update.effective_chat.type != "private":
-        return
+    bot_info = await context.bot.get_me()
 
     if is_admin(user.id):
-        text = (
-            f"👋 Salom, <b>{user.first_name}</b>!\n\n"
-            "🤖 <b>Bot Admin Paneli</b>ga xush kelibsiz.\n"
-            "Quyidagi tugmalardan foydalaning:"
-        )
-        await update.message.reply_text(text, parse_mode=ParseMode.HTML,
-                                        reply_markup=admin_keyboard())
-    else:
-        bot_info = await context.bot.get_me()
-        bot_username = bot_info.username
-        text = (
-            f"👋 Assalomu alaykum, <b>{user.first_name}</b>!\n\n"
-            "🤖 Men <b>Yordamchi Bot</b>man!\n\n"
-            "📌 <b>Mening vazifalarim:</b>\n"
-            "• Guruhda salomlashuvlarga javob beraman\n"
-            "• Savollarga avtomatik javob qaytaraman\n"
-            "• Guruh a'zolari bilan muloqot qilaman\n\n"
-            "⬇️ Quyidagi tugmalardan birini tanlang:"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_username}?startgroup=true")],
-            [InlineKeyboardButton("❓ Bot qo'shilmadimi?", callback_data="bot_not_added")],
-            [InlineKeyboardButton("🆘 Yordam — Adminga yozish", callback_data="contact_admin")],
-        ])
+        active, banned, total, today = get_stats()
         await update.message.reply_text(
-            text,
-            parse_mode=ParseMode.HTML,
-            reply_markup=keyboard
+            f"👑 Xush kelibsiz, <b>{user.first_name}</b>!\n\n"
+            f"🤖 <b>{BOT_NAME}</b> — Admin Panel\n\n"
+            "📊 <b>Hozirgi holat:</b>\n"
+            f"  ✅ Faol guruhlar: <b>{active}</b>\n"
+            f"  🚫 Taqiqlangan:   <b>{banned}</b>\n"
+            f"  💬 Jami xabarlar: <b>{total}</b>\n"
+            f"  📅 Bugun:         <b>{today}</b>\n\n"
+            "👇 Boshqarish uchun tugmani bosing:",
+            parse_mode=ParseMode.HTML, reply_markup=admin_kb()
+        )
+    else:
+        await update.message.reply_text(
+            f"✨ <b>Assalomu alaykum, {user.first_name}!</b>\n\n"
+            f"🤖 Men <b>{BOT_NAME}</b>man!\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "🎯 <b>Nima qila olaman?</b>\n"
+            "  💬 Salomlashuvlarga alik olaman\n"
+            "  🗣 Savollarga avtomatik javob beraman\n"
+            "  🤝 Guruh a'zolari bilan muloqot qilaman\n"
+            "  🎉 Yangi a'zolarni kutib olaman\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "👇 <b>Quyidan birini tanlang:</b>",
+            parse_mode=ParseMode.HTML, reply_markup=user_kb(bot_info.username)
         )
 
-async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not is_admin(update.effective_user.id):
-        return
+async def cmd_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not is_admin(update.effective_user.id): return
     await update.message.reply_text(
-        "🛠 <b>Admin Panel</b>", parse_mode=ParseMode.HTML,
-        reply_markup=admin_keyboard()
+        f"🛠 <b>Admin Panel</b> — {BOT_NAME}",
+        parse_mode=ParseMode.HTML, reply_markup=admin_kb()
     )
 
-# --- Guruhga qo'shilganda / chiqarilganda ---
-async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    result = update.my_chat_member
-    if not result:
-        return
-    chat = result.chat
-    new_status = result.new_chat_member.status
-
-    if new_status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
+async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    r = update.my_chat_member
+    if not r: return
+    chat = r.chat
+    status = r.new_chat_member.status
+    if status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
         if chat.type in ("group", "supergroup"):
             add_group(chat.id, chat.title, chat.username)
-            logger.info(f"Bot added to group: {chat.title} ({chat.id})")
-    elif new_status in (ChatMember.LEFT, ChatMember.BANNED):
-        logger.info(f"Bot removed from group: {chat.title} ({chat.id})")
+            logger.info(f"✅ Qo'shildi: {chat.title} ({chat.id})")
+    elif status in (ChatMember.LEFT, ChatMember.BANNED):
+        logger.info(f"❌ Chiqarildi: {chat.title} ({chat.id})")
 
-# --- Guruhdagi xabarlar ---
+async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    for member in update.message.new_chat_members:
+        if member.is_bot: continue
+        name = member.first_name
+        mn = f'<a href="tg://user?id={member.id}">{name}</a>'
+        greets = [
+            f"🎉 Xush kelibsiz {mn}! Bu guruhga qo'shilganingizdan xursandmiz! 😊🌟",
+            f"👋 Salom {mn}! Guruhimizga xush kelibsiz! Yaxshi vaqt o'tkazing! 🎊",
+            f"🌟 {mn}, guruhimizga marhamat! Yoqimli muhit yaratishda yordam bering! 😄",
+            f"✨ {mn} bilan guruh yanada jonlandi! Xush kelibsiz! 🎉💫",
+            f"💫 Xush kelibsiz {mn}! Savollaringiz bo'lsa bemalol so'rang! 😊",
+            f"🌈 {mn}, siz bilan guruhimiz to'ldi! Yaxshi vaqt o'tkazing! 😄🎉",
+        ]
+        await update.message.reply_text(random.choice(greets), parse_mode=ParseMode.HTML)
+
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
-    message = update.message
-
-    if not user or not message or chat.type not in ("group", "supergroup"):
-        return
-
-    if is_banned(chat.id):
-        return
-
+    msg = update.message
+    if not user or not msg or chat.type not in ("group", "supergroup"): return
+    if is_banned(chat.id): return
     add_group(chat.id, chat.title, chat.username)
     log_message(chat.id, user.id, user.username or user.first_name)
-
-    text = message.text or ""
-    if not text:
-        return
-
+    text = msg.text or ""
+    if not text: return
     reply = get_auto_reply(text, user.first_name)
     if reply:
-        final = reply.replace("{name}", user.first_name)
-        await message.reply_text(final, parse_mode=ParseMode.HTML)
+        await msg.reply_text(reply, parse_mode=ParseMode.HTML)
 
-# ===================== CALLBACK HANDLER =====================
-async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = query.data
-    user_id = query.from_user.id
-
-    if not is_admin(user_id):
-        await query.edit_message_text("❌ Ruxsat yoʻq!")
-        return
-
-    # --- STATISTIKA ---
-    if data == "stats":
-        active, banned, total_msg, today_msg = get_stats()
-        text = (
-            "📊 <b>Bot Statistikasi</b>\n\n"
-            f"✅ Faol guruhlar: <b>{active}</b>\n"
-            f"🚫 Taqiqlangan: <b>{banned}</b>\n"
-            f"💬 Jami xabarlar: <b>{total_msg}</b>\n"
-            f"📅 Bugungi xabarlar: <b>{today_msg}</b>\n"
-        )
-        kb = InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_main")]])
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
-
-    # --- GURUHLAR RO'YXATI ---
-    elif data.startswith("groups_list_"):
-        page = int(data.split("_")[-1])
-        groups = [g for g in get_all_groups() if g[5] == 0]
-        per_page = 5
-        start_idx = page * per_page
-        end_idx = start_idx + per_page
-        page_groups = groups[start_idx:end_idx]
-
-        if not page_groups:
-            text = "👥 Hech qanday guruh yoʻq."
-        else:
-            text = f"👥 <b>Faol Guruhlar</b> ({len(groups)} ta):\n\n"
-            for g in page_groups:
-                chat_id, title, username, members, added, _, _ = g
-                uname = f"@{username}" if username else "—"
-                text += f"• <b>{title}</b>\n  🆔 <code>{chat_id}</code> | {uname}\n  📅 {added}\n\n"
-
-        nav_buttons = []
-        if page > 0:
-            nav_buttons.append(InlineKeyboardButton("⬅️", callback_data=f"groups_list_{page-1}"))
-        if end_idx < len(groups):
-            nav_buttons.append(InlineKeyboardButton("➡️", callback_data=f"groups_list_{page+1}"))
-
-        keyboard = []
-        if nav_buttons:
-            keyboard.append(nav_buttons)
-
-        # Guruh taqiqlash uchun ID kiritish
-        keyboard.append([InlineKeyboardButton("🚫 Guruh taqiqlash", callback_data="ban_group_prompt")])
-        keyboard.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_main")])
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML,
-                                      reply_markup=InlineKeyboardMarkup(keyboard))
-
-    # --- TAQIQLANGAN GURUHLAR ---
-    elif data == "banned_list":
-        groups = [g for g in get_all_groups() if g[5] == 1]
-        if not groups:
-            text = "✅ Taqiqlangan guruh yoʻq."
-        else:
-            text = f"🚫 <b>Taqiqlangan Guruhlar</b> ({len(groups)} ta):\n\n"
-            for g in groups:
-                chat_id, title, username, _, added, _, reason = g
-                text += f"• <b>{title}</b>\n  🆔 <code>{chat_id}</code>\n  📝 {reason or 'Sabab yoʻq'}\n\n"
-
-        keyboard = [
-            [InlineKeyboardButton("✅ Guruhni tiklash", callback_data="unban_group_prompt")],
-            [InlineKeyboardButton("🔙 Orqaga", callback_data="back_main")]
-        ]
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML,
-                                      reply_markup=InlineKeyboardMarkup(keyboard))
-
-    # --- SOZLAMALAR ---
-    elif data == "settings":
-        mode = get_setting("mention_mode")
-        mention_text = get_setting("mention_text")
-        status = "✅ Yoqilgan" if mode == "on" else "❌ O'chirilgan"
-        text = (
-            "⚙️ <b>Bot Sozlamalari</b>\n\n"
-            f"💬 Mention rejimi: {status}\n\n"
-            f"📝 Mention matni:\n<code>{mention_text}</code>\n\n"
-            "<i>O'zgaruvchilar: {mention}, {name}, {group}</i>"
-        )
-        toggle = "off" if mode == "on" else "on"
-        toggle_text = "❌ O'chirish" if mode == "on" else "✅ Yoqish"
-        keyboard = [
-            [InlineKeyboardButton(toggle_text, callback_data=f"toggle_mention_{toggle}")],
-            [InlineKeyboardButton("✏️ Matnni o'zgartirish", callback_data="change_mention_text")],
-            [InlineKeyboardButton("🔙 Orqaga", callback_data="back_main")]
-        ]
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML,
-                                      reply_markup=InlineKeyboardMarkup(keyboard))
-
-    elif data.startswith("toggle_mention_"):
-        new_val = data.split("_")[-1]
-        set_setting("mention_mode", new_val)
-        await query.answer("✅ Saqlandi!", show_alert=True)
-        # Sozlamalarni qayta ko'rsatish
-        context.user_data["action"] = None
-        await callback_handler_redirect(query, context, "settings")
-
-    elif data == "change_mention_text":
-        context.user_data["action"] = "change_mention_text"
-        await query.edit_message_text(
-            "✏️ Yangi mention matnini yuboring.\n\n"
-            "<i>O'zgaruvchilar: {mention}, {name}, {group}</i>\n"
-            "Misol: <code>👋 {mention}, salom!</code>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor qilish", callback_data="settings")]]))
-
-    elif data == "ban_group_prompt":
-        context.user_data["action"] = "ban_group"
-        await query.edit_message_text(
-            "🚫 Taqiqlash uchun guruh <b>ID</b>sini yuboring:\n"
-            "<i>Misol: -1001234567890</i>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor qilish", callback_data="groups_list_0")]]))
-
-    elif data == "unban_group_prompt":
-        context.user_data["action"] = "unban_group"
-        await query.edit_message_text(
-            "✅ Tiklash uchun guruh <b>ID</b>sini yuboring:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor qilish", callback_data="banned_list")]]))
-
-    elif data == "broadcast_prompt":
-        context.user_data["action"] = "broadcast"
-        await query.edit_message_text(
-            "📢 Barcha guruhlarga yuboriladigan xabarni yozing:",
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor qilish", callback_data="back_main")]]))
-
-    elif data == "back_main":
-        await query.edit_message_text(
-            "🛠 <b>Admin Panel</b>", parse_mode=ParseMode.HTML,
-            reply_markup=admin_keyboard())
-
-    # --- BOT QO'SHILMADI ---
-    elif data == "bot_not_added":
-        bot_info = await context.bot.get_me()
-        bot_username = bot_info.username
-        text = (
-            "❓ <b>Bot guruhga qo'shilmadimi?</b>\n\n"
-            "Quyidagi qadamlarni bajaring:\n\n"
-            "1️⃣ Quyidagi tugmani bosing\n"
-            "2️⃣ Guruhingizni tanlang\n"
-            "3️⃣ <b>«Bot qo'shish»</b> tugmasini bosing\n"
-            "4️⃣ Guruh sozlamalariga kiring\n"
-            "5️⃣ <b>Adminlar → Bot qo'shing → Barcha ruxsatlarni bering</b>\n\n"
-            "✅ Shundan so'ng bot ishlashni boshlaydi!"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_username}?startgroup=true")],
-            [InlineKeyboardButton("🔙 Orqaga", callback_data="back_user_main")],
-        ])
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
-
-    # --- ADMINGA YOZISH ---
-    elif data == "contact_admin":
-        admin_id = ADMIN_IDS[0]
-        text = (
-            "🆘 <b>Yordam kerakmi?</b>\n\n"
-            "Adminga to'g'ridan-to'g'ri murojaat qilishingiz mumkin!\n\n"
-            "📩 Admin sizning xabaringizni ko'radi va javob beradi.\n\n"
-            "⏰ Javob vaqti: <b>24 soat ichida</b>"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("📩 Adminga yozish", url=f"tg://user?id={admin_id}")],
-            [InlineKeyboardButton("🔙 Orqaga", callback_data="back_user_main")],
-        ])
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
-
-    # --- FOYDALANUVCHI BOSH SAHIFA ---
-    elif data == "back_user_main":
-        bot_info = await context.bot.get_me()
-        bot_username = bot_info.username
-        text = (
-            "🤖 <b>Yordamchi Bot</b>\n\n"
-            "⬇️ Quyidagi tugmalardan birini tanlang:"
-        )
-        keyboard = InlineKeyboardMarkup([
-            [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_username}?startgroup=true")],
-            [InlineKeyboardButton("❓ Bot qo'shilmadimi?", callback_data="bot_not_added")],
-            [InlineKeyboardButton("🆘 Yordam — Adminga yozish", callback_data="contact_admin")],
-        ])
-        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
-
-async def callback_handler_redirect(query, context, target):
-    """Sozlamalarni qayta yuklovchi yordamchi funksiya"""
-    mode = get_setting("mention_mode")
-    mention_text = get_setting("mention_text")
-    status = "✅ Yoqilgan" if mode == "on" else "❌ O'chirilgan"
-    text = (
-        "⚙️ <b>Bot Sozlamalari</b>\n\n"
-        f"💬 Mention rejimi: {status}\n\n"
-        f"📝 Mention matni:\n<code>{mention_text}</code>\n\n"
-        "<i>O'zgaruvchilar: {mention}, {name}, {group}</i>"
-    )
-    toggle = "off" if mode == "on" else "on"
-    toggle_text = "❌ O'chirish" if mode == "on" else "✅ Yoqish"
-    keyboard = [
-        [InlineKeyboardButton(toggle_text, callback_data=f"toggle_mention_{toggle}")],
-        [InlineKeyboardButton("✏️ Matnni o'zgartirish", callback_data="change_mention_text")],
-        [InlineKeyboardButton("🔙 Orqaga", callback_data="back_main")]
-    ]
-    await query.edit_message_text(text, parse_mode=ParseMode.HTML,
-                                  reply_markup=InlineKeyboardMarkup(keyboard))
-
-# --- Admin PM xabar handler ---
-async def handle_admin_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
-    if not is_admin(user.id) or update.effective_chat.type != "private":
-        return
-
+    if not is_admin(user.id) or update.effective_chat.type != "private": return
     action = context.user_data.get("action")
-    text = update.message.text
+    text = update.message.text or ""
 
-    if action == "ban_group":
+    if action == "ban_id":
         try:
-            chat_id = int(text.strip())
-            ban_group(chat_id, "Admin tomonidan taqiqlandi")
-            context.user_data["action"] = None
+            cid = int(text.strip())
+            ban_group(cid, "Admin tomonidan taqiqlandi")
+            context.user_data.pop("action", None)
             await update.message.reply_text(
-                f"✅ Guruh <code>{chat_id}</code> taqiqlandi!",
-                parse_mode=ParseMode.HTML, reply_markup=admin_keyboard())
+                f"✅ Guruh <code>{cid}</code> taqiqlandi!",
+                parse_mode=ParseMode.HTML, reply_markup=admin_kb())
         except ValueError:
             await update.message.reply_text("❌ Noto'g'ri ID! Raqam kiriting.")
-
-    elif action == "unban_group":
+    elif action == "unban_id":
         try:
-            chat_id = int(text.strip())
-            unban_group(chat_id)
-            context.user_data["action"] = None
+            cid = int(text.strip())
+            unban_group(cid)
+            context.user_data.pop("action", None)
             await update.message.reply_text(
-                f"✅ Guruh <code>{chat_id}</code> tiklandi!",
-                parse_mode=ParseMode.HTML, reply_markup=admin_keyboard())
+                f"✅ Guruh <code>{cid}</code> tiklandi!",
+                parse_mode=ParseMode.HTML, reply_markup=admin_kb())
         except ValueError:
             await update.message.reply_text("❌ Noto'g'ri ID!")
-
-    elif action == "change_mention_text":
-        set_setting("mention_text", text)
-        context.user_data["action"] = None
-        await update.message.reply_text(
-            "✅ Mention matni saqlandi!\n\n"
-            f"Yangi matn: <code>{text}</code>",
-            parse_mode=ParseMode.HTML, reply_markup=admin_keyboard())
-
     elif action == "broadcast":
         groups = [g for g in get_all_groups() if g[5] == 0]
-        sent, failed = 0, 0
+        sent = failed = 0
         for g in groups:
             try:
                 await context.bot.send_message(
-                    chat_id=g[0], text=f"📢 <b>E'lon:</b>\n\n{text}",
-                    parse_mode=ParseMode.HTML)
+                    g[0], f"📢 <b>E'lon:</b>\n\n{text}", parse_mode=ParseMode.HTML)
                 sent += 1
             except Exception:
                 failed += 1
-        context.user_data["action"] = None
+        context.user_data.pop("action", None)
         await update.message.reply_text(
-            f"📢 <b>Yuborildi!</b>\n✅ Muvaffaqiyatli: {sent}\n❌ Xato: {failed}",
-            parse_mode=ParseMode.HTML, reply_markup=admin_keyboard())
+            f"📢 <b>Yuborildi!</b>\n✅ Muvaffaqiyatli: <b>{sent}</b>\n❌ Xato: <b>{failed}</b>",
+            parse_mode=ParseMode.HTML, reply_markup=admin_kb())
 
-# ===================== MAIN =====================
+async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    q = update.callback_query
+    await q.answer()
+    d = q.data
+    uid = q.from_user.id
+    bot_info = await context.bot.get_me()
+
+    # ── FOYDALANUVCHI ──
+    if d == "how_to_add":
+        await q.edit_message_text(
+            "📖 <b>Botni guruhga qo'shish — 5 qadam</b>\n\n"
+            "1️⃣ Quyidagi <b>«Guruhga qo'shish»</b> tugmasini bosing\n"
+            "2️⃣ Ro'yxatdan guruhingizni tanlang\n"
+            "3️⃣ <b>«Bot qo'shish»</b> tugmasini tasdiqlang\n\n"
+            "4️⃣ Guruh sozlamalari → <b>Adminlar</b>ga kiring\n"
+            "5️⃣ Botni toping → <b>Barcha ruxsatlarni bering ✓</b>\n\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            "⚠️ <b>Muhim:</b> Bot admin bo'lmasa xabarlarni "
+            "o'qiy olmaydi va javob bera olmaydi!\n\n"
+            "✅ Shundan so'ng bot to'liq ishlaydi! 🎉",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_info.username}?startgroup=true")],
+                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_user")],
+            ])
+        ); return
+
+    if d == "contact_admin":
+        await q.edit_message_text(
+            "🆘 <b>Yordam kerakmi?</b>\n\n"
+            "📩 Adminga to'g'ridan-to'g'ri murojaat qiling!\n\n"
+            "✅ Admin xabaringizni ko'radi\n"
+            "⏰ Javob vaqti: <b>24 soat ichida</b>\n\n"
+            "👇 Quyidagi tugmani bosib yozing:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📩 Adminga yozish", url=f"tg://user?id={ADMIN_IDS[0]}")],
+                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_user")],
+            ])
+        ); return
+
+    if d == "back_user":
+        await q.edit_message_text(
+            f"✨ <b>🤖 {BOT_NAME}</b>\n\n👇 Quyidagi tugmalardan birini tanlang:",
+            parse_mode=ParseMode.HTML, reply_markup=user_kb(bot_info.username)
+        ); return
+
+    # ── ADMIN ──
+    if not is_admin(uid):
+        await q.edit_message_text("❌ Ruxsat yo'q!"); return
+
+    if d == "stats":
+        active, banned, total, today = get_stats()
+        await q.edit_message_text(
+            "📊 <b>Bot Statistikasi</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n"
+            f"✅ Faol guruhlar:    <b>{active}</b>\n"
+            f"🚫 Taqiqlangan:      <b>{banned}</b>\n"
+            f"📊 Jami guruhlar:    <b>{active + banned}</b>\n\n"
+            f"💬 Jami xabarlar:    <b>{total}</b>\n"
+            f"📅 Bugungi xabarlar: <b>{today}</b>\n\n"
+            f"🕐 <i>{datetime.now().strftime('%Y-%m-%d %H:%M')}</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")]]))
+
+    elif d.startswith("groups_"):
+        page = int(d.split("_")[1])
+        groups = [g for g in get_all_groups() if g[5] == 0]
+        per_page = 5
+        pg = groups[page * per_page:(page + 1) * per_page]
+        if not groups:
+            text = "👥 Hech qanday faol guruh yo'q."
+        else:
+            text = f"👥 <b>Faol Guruhlar</b> — {len(groups)} ta\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            for g in pg:
+                cid, title, uname, _, added, _, _ = g
+                un = f"@{uname}" if uname else "—"
+                text += f"📌 <b>{title}</b>\n   🆔 <code>{cid}</code>  🔗 {un}\n   📅 {added}\n\n"
+        nav = []
+        if page > 0: nav.append(InlineKeyboardButton("⬅️", callback_data=f"groups_{page-1}"))
+        if (page+1)*per_page < len(groups): nav.append(InlineKeyboardButton("➡️", callback_data=f"groups_{page+1}"))
+        rows = []
+        if nav: rows.append(nav)
+        rows += [
+            [InlineKeyboardButton("🚫 Guruh taqiqlash", callback_data="ask_ban")],
+            [InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")],
+        ]
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+
+    elif d == "banned":
+        groups = [g for g in get_all_groups() if g[5] == 1]
+        if not groups:
+            text = "✅ Taqiqlangan guruhlar yo'q!"
+        else:
+            text = f"🚫 <b>Taqiqlangan Guruhlar</b> — {len(groups)} ta\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            for g in groups:
+                cid, title, _, _, added, _, reason = g
+                text += f"🔴 <b>{title}</b>\n   🆔 <code>{cid}</code>\n   📝 {reason or '—'}\n\n"
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Guruhni tiklash", callback_data="ask_unban")],
+                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")],
+            ]))
+
+    elif d == "settings":
+        total_words = len(RESPONSES)
+        total_replies = sum(len(v) for v in RESPONSES.values())
+        await q.edit_message_text(
+            "⚙️ <b>Bot Sozlamalari</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"💬 Kalit so'zlar: <b>{total_words}</b>\n"
+            f"📝 Jami javoblar: <b>{total_replies}</b>\n\n"
+            f"🤖 Bot nomi: <b>{BOT_NAME}</b>\n"
+            f"👑 Adminlar: <b>{len(ADMIN_IDS)}</b>\n\n"
+            "⚡ Barcha funksiyalar <b>faol</b>!\n\n"
+            "💡 <i>Yangi so'z qo'shish uchun bot.py faylini tahrirlang</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")]]))
+
+    elif d == "broadcast_ask":
+        context.user_data["action"] = "broadcast"
+        groups = [g for g in get_all_groups() if g[5] == 0]
+        await q.edit_message_text(
+            f"📢 <b>Broadcast</b>\n\n"
+            f"📊 Guruhlar soni: <b>{len(groups)}</b>\n\n"
+            "✍️ Yuboriladigan xabarni yozing:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
+
+    elif d == "ask_ban":
+        context.user_data["action"] = "ban_id"
+        await q.edit_message_text(
+            "🚫 <b>Guruh taqiqlash</b>\n\nGuruh <b>ID</b>sini yuboring:\n<i>Misol: -1001234567890</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="groups_0")]]))
+
+    elif d == "ask_unban":
+        context.user_data["action"] = "unban_id"
+        await q.edit_message_text(
+            "✅ <b>Guruhni tiklash</b>\n\nGuruh <b>ID</b>sini yuboring:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="banned")]]))
+
+    elif d == "back_admin":
+        active, banned, total, today = get_stats()
+        await q.edit_message_text(
+            f"🛠 <b>Admin Panel</b> — {BOT_NAME}\n\n"
+            f"✅ Faol: <b>{active}</b>  •  🚫 Taqiqlangan: <b>{banned}</b>  •  💬 Xabarlar: <b>{total}</b>",
+            parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+
+
+# ═══════════════════════════════════════════════════════
+#                    🚀 ISHGA TUSHIRISH
+# ═══════════════════════════════════════════════════════
 def main():
     init_db()
     app = Application.builder().token(BOT_TOKEN).build()
-
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("panel", panel))
-    app.add_handler(ChatMemberHandler(track_chat_member, ChatMemberHandler.MY_CHAT_MEMBER))
-    app.add_handler(CallbackQueryHandler(callback_handler))
+    app.add_handler(CommandHandler("start", cmd_start))
+    app.add_handler(CommandHandler("panel", cmd_panel))
+    app.add_handler(ChatMemberHandler(track_bot, ChatMemberHandler.MY_CHAT_MEMBER))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
+    app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(
-        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
-        handle_admin_message))
+        filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, handle_admin_pm))
     app.add_handler(MessageHandler(
-        filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
-        handle_group_message))
-
-    logger.info("Bot ishga tushdi...")
+        filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND, handle_group_message))
+    logger.info(f"🚀 {BOT_NAME} ishga tushdi!")
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 if __name__ == "__main__":
