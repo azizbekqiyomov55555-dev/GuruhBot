@@ -10,8 +10,8 @@ from telegram.ext import (
 from telegram.constants import ParseMode
 
 # ===================== SOZLAMALAR =====================
-BOT_TOKEN = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"   # @BotFather dan olingan token
-ADMIN_IDS = [8537782289]             # Admin Telegram ID lari (list)
+BOT_TOKEN = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"
+ADMIN_IDS = [8537782289]
 
 # ===================== JAVOBLAR BAZASI =====================
 # Format: "kalit so'z" : ["javob1", "javob2", "javob3", ...]
@@ -440,6 +440,414 @@ RESPONSES = {
         "Baxt hammaga nasib bo'lsin! 🌟😊",
         "Baxtli bo'ling! 🌈💫",
     ],
+
+    # --- LICH / PM SO'RASH ---
+    "lich yozing": [
+        "Yozing, eshityapman! 📩😊",
+        "DM ochiq, yuboring! 📨✨",
+        "Lichkaga yozing, javob beraman! 💬",
+        "Lich bo'yicha gaplashamiz! 📩🌟",
+        "Xabar yuboring, kutib turaman! 💌",
+    ],
+    "lich": [
+        "Lichkaga yuboring! 📩😊",
+        "DM ochiq! Yozing! 💬✨",
+        "Lich yuboring, eshitaman! 📨",
+    ],
+    "dm": [
+        "DM ochiq, yuboring! 📩😊",
+        "Direct message yuboring! 💬",
+        "Eshityapman, yozing! 📨",
+    ],
+    "yozing": [
+        "Ha, yuboring! Eshityapman 😊",
+        "Nima deyaysiz, yozing! 📩",
+        "Kutib turaman! ✍️",
+    ],
+
+    # --- MEHRIBON / DO'STONA SO'ZLAR ---
+    "asalim": [
+        "Asal bo'ling! 🍯😊",
+        "Menga yoqdi bu so'z 🍯💕",
+        "Shirin-shirin! 🍯✨",
+        "Asal kabi shirin bo'ling! 😄🍯",
+    ],
+    "jonim": [
+        "Jon bo'ling! ❤️😊",
+        "Jonga tegdi, rahmat! 💕",
+        "Jonginam! 🥰",
+        "Yaxshi gaplar eshitish yoqadi! 😊❤️",
+    ],
+    "azizim": [
+        "Aziz bo'ling! 💙😊",
+        "Menga ham aziz bo'ldingiz! 🌟",
+        "Rahmat, azizim! 💕",
+    ],
+    "qo'zim": [
+        "Qo'zichoq! 🐑😄",
+        "Qo'zicha mehribon bo'ling! 🐑💕",
+        "Yoqimli so'z! 😊",
+    ],
+    "hayotim": [
+        "Hayot go'zal! 🌸😊",
+        "Hayot — eng katta ne'mat! 🌟",
+        "Yaxshi hayot tilaman! 🌈",
+    ],
+    "sevaman": [
+        "Sevgi — go'zal his! ❤️😊",
+        "Baxtli bo'ling! 💕🌟",
+        "Sevgi bilan to'la bo'ling! ❤️",
+    ],
+    "sog'indim": [
+        "Sog'inish — yaxshi belgi! 🥺😊",
+        "Biz ham sog'indik! 💕",
+        "Ko'rishguncha! 🌟",
+    ],
+    "yaxshi ko'raman": [
+        "Yaxshi ko'rish — go'zal his! ❤️",
+        "Rahmat! Siz ham yaxshi bo'ling! 💕",
+        "Bu so'z yurakka yoqdi! 🥰",
+    ],
+    "do'stim": [
+        "Do'st — eng katta boylik! 🤝😊",
+        "Do'stlik muqaddas! 🤝🌟",
+        "Siz ham do'stimsiz! 💙",
+    ],
+    "aka": [
+        "Ha, aytingchi aka! 😊",
+        "Akam! Nima gap? 😄",
+        "Ha, eshityapman! 👂",
+    ],
+    "opa": [
+        "Ha, opam! Nima gap? 😊",
+        "Opam! Aytingchi! 😄",
+        "Eshityapman! 👂",
+    ],
+    "bro": [
+        "Bro! Nima gap? 😎",
+        "Ha bro! 🤜🤛",
+        "Bro, yaxshimisan? 😄",
+    ],
+    "sis": [
+        "Sis! Yaxshimisiz? 😊",
+        "Ha sis! 💕",
+        "Eshityapman! 😄",
+    ],
+
+    # --- KAYFIYAT ---
+    "kayfiyat": [
+        "Kayfiyat a'lo! 🌟😄 Sizchi?",
+        "Zo'r kayfiyatda! 🎉 Siz-chi?",
+        "Ajoyib! Kayfiyatingiz ham yaxshi bo'lsin! ☀️",
+    ],
+    "zerikdim": [
+        "Zerikmaslik uchun shu yerda gaplashamiz! 😄",
+        "Gaplashamiz, zeriktirmayman! 😎",
+        "Zerikish yo'q, biz bormiz! 🎉",
+    ],
+    "bored": [
+        "Zerikma, gaplash! 😄",
+        "Bu yerda qiziq! 🎉",
+    ],
+    "xursand": [
+        "Xursandchilik yuqumli! 😄🎉",
+        "Xursand bo'ling doim! 🌟",
+        "Xursandligingiz menga ham yuqdi! 😊",
+    ],
+    "g'amginman": [
+        "G'am ketsin! 🌈 Yaxshi kunlar keladi!",
+        "Sabr qiling, o'tib ketadi! 💪😊",
+        "Biz yoningdamiz! 🤝❤️",
+    ],
+    "yig'layapman": [
+        "Ko'z yoshi — kuchning belgisi! 💪",
+        "Hamma narsa o'tadi! 🌈 Sabr qiling!",
+        "Yoqimli kunlar keladi! ☀️",
+    ],
+    "xafa": [
+        "Xafa bo'lmang! 😊 Hamma yaxshi bo'ladi!",
+        "Xafachilik ketsin! 🌈",
+        "Yaxshi kunlar kutmoqda! ☀️💫",
+    ],
+    "yolg'iz": [
+        "Yolg'iz emassiz, biz bormiz! 😊🤝",
+        "Bu guruhda do'stlar ko'p! 🌟",
+        "Yolg'iz emas, birgamiz! 💙",
+    ],
+
+    # --- HAYOT / FALSAFA ---
+    "hayot": [
+        "Hayot go'zal, undan bahramand bo'ling! 🌸",
+        "Hayot — eng katta ne'mat! 🙏🌟",
+        "Hayotni sevib yashang! ❤️",
+    ],
+    "orzum": [
+        "Orzu qiling, intiling — bo'ladi! 💪🌟",
+        "Orzular uchish uchun qanotdir! 🦋",
+        "Orzuingiz amalga oshsin! 🌠",
+    ],
+    "maqsad": [
+        "Maqsadga erishish uchun harakat kerak! 💪",
+        "Maqsadli inson baxtli bo'ladi! 🌟",
+        "Maqsadingizga yeting! 🎯",
+    ],
+    "omad": [
+        "Omad tilaman! 🍀💫",
+        "Omad har doim o'z tarafingizda bo'lsin! 🍀",
+        "Omadli bo'ling! ✨🌟",
+    ],
+    "inshalloh": [
+        "Inshalloh, albatta bo'ladi! 🤲🌟",
+        "Inshalloh! 🤲",
+        "Alloh xohlasa, bo'ladi! 🤲✨",
+    ],
+    "mashalloh": [
+        "Mashalloh! 🤲🌟",
+        "Mashalloh, barakali bo'lsin! 🤲",
+    ],
+    "alhamdulillah": [
+        "Alhamdulillah! 🤲 Yaxshilik doim bo'lsin!",
+        "Alhamdulillah! 🤲🌟",
+    ],
+    "subhanalloh": [
+        "Subhanalloh! 🤲✨",
+        "Subhanalloh, go'zal! 🤲",
+    ],
+
+    # --- YOSH / MAKTAB ---
+    "maktab": [
+        "Maktab — bilim maskani! 📚😊",
+        "O'qing, bilim kuch! 📚💪",
+        "Maktab yillari eng yaxshi! 📚🌟",
+    ],
+    "dars": [
+        "Dars o'qidingizmi? 📚😊",
+        "Dars muhim, o'qing! 📚💡",
+        "Dars — kelajak poydevori! 📚",
+    ],
+    "imtihon": [
+        "Imtihon uchun omad! 📚🍀",
+        "O'qib tayyor bo'ling, bo'ladi! 💪📚",
+        "Omad tilayman imtihonda! 🍀✨",
+    ],
+    "universitet": [
+        "Universitet — katta hayot maktabi! 🎓😊",
+        "Barakali o'qishlar! 🎓🌟",
+    ],
+
+    # --- ISH / BIZNES ---
+    "ish": [
+        "Ishda muvaffaqiyat! 💼💪",
+        "Qanday ish? 😊",
+        "Ish — rizq! Barakali bo'lsin! 💼",
+    ],
+    "pul": [
+        "Pul topish uchun mehnat kerak! 💰💪",
+        "Barakali pul tilayman! 💰🌟",
+        "Pul — vosita, baxt — maqsad! 💰😊",
+    ],
+    "biznes": [
+        "Biznes qiling, muvaffaq bo'ling! 💼🌟",
+        "Zo'r! Biznes uchun omad! 💼💪",
+        "Biznes — kelajak! 💼✨",
+    ],
+
+    # --- TABIAT / OBHAVO ---
+    "ob-havo": [
+        "Havo qanday? ☀️🌤️",
+        "Yaxshi havo tilaman! ☀️😊",
+    ],
+    "yomg'ir": [
+        "Yomg'ir — baraka! 🌧️🙏",
+        "Yomg'irli kun, ichkarida o'tirib choy iching! ☕🌧️",
+    ],
+    "quyosh": [
+        "Quyosh kabi nur sochib yashang! ☀️😊",
+        "Quyoshli kun! ☀️🌟",
+    ],
+    "bahor": [
+        "Bahor — yangilanish fasli! 🌸😊",
+        "Bahor xayrli bo'lsin! 🌸🌷",
+    ],
+    "yoz": [
+        "Yoz — dam olish! ☀️😄",
+        "Yozda issiq, lekin go'zal! ☀️🌴",
+    ],
+    "qish": [
+        "Qishda iliq bo'ling! ❄️🧣",
+        "Qish sovuq, lekin shinam! ❄️☕",
+    ],
+    "kuz": [
+        "Kuz — rangli fasl! 🍂😊",
+        "Kuzda baraka ko'p! 🍂🌟",
+    ],
+
+    # --- OVQAT (QO'SHIMCHA) ---
+    "lag'mon": [
+        "Lag'mon! 🍜 Eng mazali! 😋",
+        "Lag'mon desangiz og'zim suv keldi! 🍜🔥",
+    ],
+    "somsa": [
+        "Somsa! 🥟 Issiq-issiq! 😋",
+        "Somsa vaqti bo'ldimi? 🥟😄",
+    ],
+    "chuchvara": [
+        "Chuchvara — milliy taom! 🥟😋",
+        "Chuchvara desangiz, boraman! 😄",
+    ],
+    "hamburger": [
+        "Hamburger! 🍔 Mazali!",
+        "Fast food vaqti! 🍔😄",
+    ],
+    "ichimlik": [
+        "Nima ichmoqchisiz? ☕🥤",
+        "Choy yoki qahva? ☕😊",
+    ],
+    "qahva": [
+        "Qahva! ☕ Energiya beradi!",
+        "Qahva vaqti! ☕😊",
+        "Qahva iching, hushyor bo'ling! ☕💪",
+    ],
+    "sharbat": [
+        "Sharbat! 🥤 Mazali va foydali!",
+        "Sharbat iching, sog' bo'ling! 🥤😊",
+    ],
+
+    # --- HAYVONLAR ---
+    "it": [
+        "It — sodiq do'st! 🐕😊",
+        "Itingiz bormi? 🐕",
+    ],
+    "mushuk": [
+        "Mushuk! 🐱 Juda yoqimli!",
+        "Mushuklar — eng muloyim hayvonlar! 🐱😊",
+    ],
+    "cat": [
+        "Cat! 🐱 So cute!",
+        "Meow! 🐱😄",
+    ],
+    "dog": [
+        "Dog! 🐕 Man's best friend!",
+        "Woof! 🐕😄",
+    ],
+
+    # --- IJOBIY UNDOV ---
+    "wow": [
+        "Wow! 😲✨ Ajoyib!",
+        "WOW! 🤩 Zo'r!",
+        "Wow-wow! 😮🌟",
+    ],
+    "omg": [
+        "OMG! 😲 Ishonmayman!",
+        "Voy! 😮✨",
+    ],
+    "voy": [
+        "Voy-voy! 😮 Nima bo'ldi?",
+        "Voy! Qiziqarli! 😲",
+    ],
+    "yey": [
+        "Yey! 🎉🎊",
+        "Yey-yey! Barakalla! 🥳",
+    ],
+    "ura": [
+        "Ura! 🎉💪",
+        "Ura-ura! Barakalla! 🎊🌟",
+    ],
+    "yashasin": [
+        "Yashasin! 🥳🎉",
+        "Yashasin-yashasin! 🎊💫",
+    ],
+
+    # --- SALBIY KAYFIYAT ---
+    "jahl": [
+        "Jahl — sog'liqqa zararli! 😊 Tinchlaning!",
+        "Tinchlaning, hamma narsa o'tadi! 💆",
+    ],
+    "jaxlim chiqdi": [
+        "Tinchlaning, bo'ladi! 😊💆",
+        "Jahl o'tib ketadi! Sabr! 🌈",
+    ],
+    "achindim": [
+        "Achinish — insoniylik! 🤝",
+        "Yaxshi odam ekansiz! 😊",
+    ],
+    "qo'rqdim": [
+        "Qo'rqmasdan olg'a! 💪😊",
+        "Qo'rquv — g'alaba oldida kamayadi! 💪",
+    ],
+    "esladim": [
+        "Yaxshi xotiralar doim qolsin! 🌟",
+        "Eslab turish — yaxshi! 💭😊",
+    ],
+
+    # --- KUNDALIK ---
+    "uyg'ondim": [
+        "Xayrli tong! ☀️ Yaxshi kun bo'lsin!",
+        "Uyg'oning muborak! ☀️😊",
+        "Yangi kun, yangi imkoniyat! 🌅",
+    ],
+    "nonushta": [
+        "Nonushtani yedingizmi? 🍽️😊",
+        "Yaxshi ishtaha! 🍽️✨",
+    ],
+    "tushlik": [
+        "Tushlik vaqti! 🍽️😋",
+        "Yaxshi ishtaha tilayman! 🍽️",
+    ],
+    "kechki ovqat": [
+        "Kechki ovqat vaqti! 🍽️😊",
+        "Yaxshi ishtaha! 🍽️🌙",
+    ],
+    "dam olaman": [
+        "Yaxshi dam oling! 🛋️😊",
+        "Dam olish muhim! 💆✨",
+    ],
+    "sayr": [
+        "Sayrda yaxshi dam oling! 🚶😊",
+        "Sayr — sog'liqqa yaxshi! 🚶💚",
+    ],
+
+    # --- IJTIMOIY ---
+    "barakalla": [
+        "Barakalla! 👏🌟",
+        "Barakalla, zo'r! 👏😊",
+    ],
+    "qoyil": [
+        "Qoyilmaqom! 👏✨",
+        "Qoyil, zo'r! 👏🌟",
+    ],
+    "a'lo": [
+        "A'lo! 💯🌟",
+        "A'lo natija! 💯👏",
+    ],
+    "hammasi joyida": [
+        "Yaxshi! Shunday bo'lsin doim! 😊🌟",
+        "Zo'r! 👍✨",
+    ],
+    "tinchlik": [
+        "Tinchlikda! 😊 Siz-chi?",
+        "Tinch-totuv! 🕊️🌟",
+    ],
+    "gap yo'q": [
+        "Yaxshi! 😊👍",
+        "Zo'r, davom eting! 🌟",
+    ],
+    "endi": [
+        "Endi nima? 😊 Davom eting!",
+        "Ha, eshityapman! 👂",
+    ],
+    "lekin": [
+        "Lekin nima? 🤔 Gapiring!",
+        "Davom eting! 😊",
+    ],
+    "albatta": [
+        "Albatta-albatta! ✅😊",
+        "Ha, albatta! 🌟",
+    ],
+    "umuman": [
+        "Umuman olganda — yaxshi! 😊",
+        "Ha, to'g'ri! 👍",
+    ],
 }
 
 def get_auto_reply(text: str, user_name: str) -> str | None:
@@ -615,10 +1023,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(text, parse_mode=ParseMode.HTML,
                                         reply_markup=admin_keyboard())
     else:
+        bot_info = await context.bot.get_me()
+        bot_username = bot_info.username
+        text = (
+            f"👋 Assalomu alaykum, <b>{user.first_name}</b>!\n\n"
+            "🤖 Men <b>Yordamchi Bot</b>man!\n\n"
+            "📌 <b>Mening vazifalarim:</b>\n"
+            "• Guruhda salomlashuvlarga javob beraman\n"
+            "• Savollarga avtomatik javob qaytaraman\n"
+            "• Guruh a'zolari bilan muloqot qilaman\n\n"
+            "⬇️ Quyidagi tugmalardan birini tanlang:"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_username}?startgroup=true")],
+            [InlineKeyboardButton("❓ Bot qo'shilmadimi?", callback_data="bot_not_added")],
+            [InlineKeyboardButton("🆘 Yordam — Adminga yozish", callback_data="contact_admin")],
+        ])
         await update.message.reply_text(
-            f"👋 Salom, <b>{user.first_name}</b>!\n"
-            "Men guruh botiman. Meni guruhingizga qoʻshing va admin qiling! 🚀",
-            parse_mode=ParseMode.HTML
+            text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=keyboard
         )
 
 async def panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -663,11 +1087,10 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     if not text:
         return
 
-    mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
     reply = get_auto_reply(text, user.first_name)
-
     if reply:
-        await message.reply_text(f"{mention}, {reply}", parse_mode=ParseMode.HTML)
+        final = reply.replace("{name}", user.first_name)
+        await message.reply_text(final, parse_mode=ParseMode.HTML)
 
 # ===================== CALLBACK HANDLER =====================
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -808,6 +1231,56 @@ async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text(
             "🛠 <b>Admin Panel</b>", parse_mode=ParseMode.HTML,
             reply_markup=admin_keyboard())
+
+    # --- BOT QO'SHILMADI ---
+    elif data == "bot_not_added":
+        bot_info = await context.bot.get_me()
+        bot_username = bot_info.username
+        text = (
+            "❓ <b>Bot guruhga qo'shilmadimi?</b>\n\n"
+            "Quyidagi qadamlarni bajaring:\n\n"
+            "1️⃣ Quyidagi tugmani bosing\n"
+            "2️⃣ Guruhingizni tanlang\n"
+            "3️⃣ <b>«Bot qo'shish»</b> tugmasini bosing\n"
+            "4️⃣ Guruh sozlamalariga kiring\n"
+            "5️⃣ <b>Adminlar → Bot qo'shing → Barcha ruxsatlarni bering</b>\n\n"
+            "✅ Shundan so'ng bot ishlashni boshlaydi!"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_username}?startgroup=true")],
+            [InlineKeyboardButton("🔙 Orqaga", callback_data="back_user_main")],
+        ])
+        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+
+    # --- ADMINGA YOZISH ---
+    elif data == "contact_admin":
+        admin_id = ADMIN_IDS[0]
+        text = (
+            "🆘 <b>Yordam kerakmi?</b>\n\n"
+            "Adminga to'g'ridan-to'g'ri murojaat qilishingiz mumkin!\n\n"
+            "📩 Admin sizning xabaringizni ko'radi va javob beradi.\n\n"
+            "⏰ Javob vaqti: <b>24 soat ichida</b>"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("📩 Adminga yozish", url=f"tg://user?id={admin_id}")],
+            [InlineKeyboardButton("🔙 Orqaga", callback_data="back_user_main")],
+        ])
+        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
+
+    # --- FOYDALANUVCHI BOSH SAHIFA ---
+    elif data == "back_user_main":
+        bot_info = await context.bot.get_me()
+        bot_username = bot_info.username
+        text = (
+            "🤖 <b>Yordamchi Bot</b>\n\n"
+            "⬇️ Quyidagi tugmalardan birini tanlang:"
+        )
+        keyboard = InlineKeyboardMarkup([
+            [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_username}?startgroup=true")],
+            [InlineKeyboardButton("❓ Bot qo'shilmadimi?", callback_data="bot_not_added")],
+            [InlineKeyboardButton("🆘 Yordam — Adminga yozish", callback_data="contact_admin")],
+        ])
+        await query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=keyboard)
 
 async def callback_handler_redirect(query, context, target):
     """Sozlamalarni qayta yuklovchi yordamchi funksiya"""
