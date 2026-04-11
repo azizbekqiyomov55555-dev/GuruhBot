@@ -748,6 +748,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         active, banned, total, today = get_stats()
         paused = context.bot_data.get("live_paused", False)
         live_icon = "⏸" if paused else "🔴"
+        live_text = "To'xtatilgan" if paused else "Faol"
         await update.message.reply_text(
             f"👑 Xush kelibsiz, <b>{user.first_name}</b>!\n\n"
             f"🤖 <b>{BOT_NAME}</b> — Admin Panel\n\n"
@@ -756,7 +757,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"  🚫 Taqiqlangan:     <b>{banned}</b>\n"
             f"  💬 Jami xabarlar:   <b>{total}</b>\n"
             f"  📅 Bugun:           <b>{today}</b>\n"
-            f"  {live_icon} Jonli efir monitoring: <b>{'To\'xtatilgan' if paused else 'Faol'}</b>\n\n"
+            f"  {live_icon} Jonli efir monitoring: <b>{live_text}</b>\n\n"
             "👇 Boshqarish uchun tugmani bosing:",
             parse_mode=ParseMode.HTML, reply_markup=admin_kb()
         )
@@ -1082,6 +1083,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         total_words   = len(RESPONSES)
         total_replies = sum(len(v) for v in RESPONSES.values())
         paused = context.bot_data.get("live_paused", False)
+        live_status_text = "To'xtatilgan" if paused else "Faol"
         await q.edit_message_text(
             "⚙️ <b>Bot Sozlamalari</b>\n"
             "━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1089,7 +1091,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📝 Jami javoblar:    <b>{total_replies}</b>\n\n"
             f"🤖 Bot nomi:         <b>{BOT_NAME}</b>\n"
             f"👑 Adminlar:         <b>{len(ADMIN_IDS)}</b>\n\n"
-            f"🔴 Live monitoring:  <b>{'To\'xtatilgan' if paused else 'Faol'}</b>\n"
+            f"🔴 Live monitoring:  <b>{live_status_text}</b>\n"
             f"📡 Kuzatiladigan guruhlar: <b>{len(LIVE_GROUP_IDS)} ta</b>\n"
             f"⏱ Tekshirish vaqti: <b>{CHECK_INTERVAL} sek</b>\n\n"
             "⚡ Barcha funksiyalar <b>faol</b>!\n\n"
