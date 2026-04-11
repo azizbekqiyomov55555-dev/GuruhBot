@@ -450,14 +450,7 @@ async def on_video_chat_ended(update: Update, context: ContextTypes.DEFAULT_TYPE
     await asyncio.sleep(3)
     ok = await pyro_create_video_chat(chat_id, LIVE_TITLE)
     if ok:
-        try:
-            await context.bot.send_message(
-                chat_id=chat_id,
-                text="🔴 <b>Jonli efir qayta yoqildi!</b> 📡",
-                parse_mode=ParseMode.HTML
-            )
-        except Exception:
-            pass
+        logger.info(f"✅ Jonli efir qayta yoqildi: {chat_id}")
 
 
 async def post_init(application: Application) -> None:
