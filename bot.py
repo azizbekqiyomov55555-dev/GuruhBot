@@ -896,13 +896,8 @@ def main():
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, handle_admin_pm))
-    app.add_handler(MessageHandler(
-        filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND, handle_group_message))
-
-    app.job_queue.run_repeating(monitor_live_stream,      interval=CHECK_INTERVAL,  first=20)
-    app.job_queue.run_repeating(send_group_invite_message, interval=INVITE_INTERVAL, first=30)
-
-    logger.info("=" * 60)
+    app.add_handler(MessageHan
+        filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND, handle_group_messag    app.job_queue.run_repeating(send_group_invite_message, interval=INVITE_INTERVAL, first    logger.info("=" * 60)
     logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI!")
     logger.info(f"📡 Pyrogram MTProto orqali jonli efir")
     logger.info(f"⏱  Tekshirish: har {CHECK_INTERVAL} sekund")
@@ -911,5 +906,4 @@ def main():
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
 
-if __name__ == "__main__":
-    main()
+if __name__ == "__ma
