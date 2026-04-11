@@ -827,6 +827,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif d == "settings":
         paused = context.bot_data.get("live_paused", False)
+        efir_holat = "Toxtatilgan" if paused else "Faol"
         await q.edit_message_text(
             "⚙️ <b>Bot Sozlamalari</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
             f"🤖 Bot nomi:           <b>{BOT_NAME}</b>\n"
@@ -835,7 +836,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📡 Jonli efir guruhlar: <b>{len(LIVE_GROUP_IDS)} ta</b>\n"
             f"   1️⃣ <code>-1003835671404</code>\n"
             f"   2️⃣ <code>-1002823910957</code>\n\n"
-            f"🔴 Efir monitoring:    <b>{'To\'xtatilgan' if paused else 'Faol'}</b>\n"
+            f"🔴 Efir monitoring:    <b>{efir_holat}</b>\n"
             f"⏱ Tekshirish:         <b>har {CHECK_INTERVAL} sek</b>\n"
             f"📢 Taklif xabari:      <b>har {INVITE_INTERVAL} sek</b>\n\n"
             "⚡ Barcha funksiyalar faol!",
