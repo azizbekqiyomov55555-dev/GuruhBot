@@ -57,8 +57,7 @@ SESSION_STRING = "AgI6LL4AVCYtJZyPAePI39DYwLzwV74HqiuErGzh52J-0HkfA_ZoW9XZEResoB
 
 # ── Guruh ID lari ──────────────────────────────────────
 LIVE_GROUP_IDS = [
-    -1003835671404,   # 1-guruh
-    -1002823910957,   # 2-guruh
+    -1002823910957,   # asosiy guruh
 ]
 
 LIVE_TITLE      = "🔴 24/7 Jonli Efir"
@@ -830,8 +829,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👑 Adminlar:           <b>{len(ADMIN_IDS)}</b>\n"
             f"💬 Kalit so'zlar:      <b>{len(RESPONSES)}</b>\n\n"
             f"📡 Jonli efir guruhlar: <b>{len(LIVE_GROUP_IDS)} ta</b>\n"
-            f"   1️⃣ <code>-1003835671404</code>\n"
-            f"   2️⃣ <code>-1002823910957</code>\n\n"
+            f"   1️⃣ <code>-1002823910957</code>\n\n"
             f"🔴 Efir monitoring:    <b>{monitoring_status}</b>\n"
             f"⏱ Tekshirish:         <b>har {CHECK_INTERVAL} sek</b>\n"
             f"📢 Taklif xabari:      <b>har {INVITE_INTERVAL} sek</b>\n\n"
