@@ -271,12 +271,20 @@ async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: i
         group_username = None
 
     # ── 3. A'zo qo'shish URL (Telegram deep link) ───────
-    # Agar guruhning @username bo'lsa — to'g'ridan a'zo qo'shish sahifasi
-    # Aks holda — invite link orqali
-    if group_username:
-        add_members_url = f"https://t.me/{group_username}?startadd"
-    else:
-        # Invite link orqali ulashish (eng ishonchli usul)
+    # "tg://add?slug=..." formati — foydalanuvchi kontaktlar ro'yxatidan tanlaydi
+    # Bu invite link'dan slug qismini olib ishlatadi
+    try:
+        # t.me/+XXXXX yoki t.me/joinchat/XXXXX formatidan slug olamiz
+        raw_link = link_str
+        if "/+" in raw_link:
+            slug = raw_link.split("/+")[-1]
+        elif "joinchat/" in raw_link:
+            slug = raw_link.split("joinchat/")[-1]
+        else:
+            slug = raw_link.split("/")[-1].lstrip("+")
+        # Kontaktlardan tanlash uchun maxsus deep link
+        add_members_url = f"tg://add?slug={slug}"
+    except Exception:
         add_members_url = link_str
 
     # ── 4. Ulashish URL (Telegram share) ────────────────
@@ -343,6 +351,32 @@ async def start_video_chat(bot: Bot, chat_id: int = None) -> dict:
     return results
 
 
+async def post_init(application) -> None:
+    """Bot ishga tushgandan keyin darhol jonli efirni yoqadi."""
+    logger.info("🚀 Bot ishga tushdi — jonli efir yoqilmoqda...")
+    await asyncio.sleep(5)
+    results = await start_video_chat(application.bot)
+    ok = sum(1 for v in results.values() if v)
+    logger.info(f"📡 Jonli efir: {ok}/{len(LIVE_GROUP_IDS)} guruhda yoqildi")
+
+
+async def is_video_chat_active(bot: Bot, chat_id: int) -> bool:
+    """Jonli efir yoqiq yoki o'chiqligini aniqlaydi."""
+    try:
+        chat = await bot.get_chat(chat_id)
+        # video_chat_started — aktiv bo'lsa ChatVideoChatStarted ob'ekti bo'ladi
+        vc = getattr(chat, "video_chat_started", None)
+        if vc is not None:
+            return True
+        # Ba'zi versiyalarda video_chat_members_count ishlatiladi
+        members = getattr(chat, "video_chat_members_count", None)
+        if members is not None and members > 0:
+            return True
+        return False
+    except TelegramError:
+        return False
+
+
 async def monitor_live_stream(context: ContextTypes.DEFAULT_TYPE) -> None:
     """
     Har CHECK_INTERVAL sekundda IKKI GURUHDA ham jonli efirni tekshiradi.
@@ -354,14 +388,12 @@ async def monitor_live_stream(context: ContextTypes.DEFAULT_TYPE) -> None:
     bot: Bot = context.bot
     for gid in LIVE_GROUP_IDS:
         try:
-            chat = await bot.get_chat(gid)
-        except TelegramError as e:
+            active = await is_video_chat_active(bot, gid)
+        except Exception as e:
             logger.error(f"Chat ma'lumoti olinmadi ({gid}): {e}")
             continue
 
-        video_chat = getattr(chat, "video_chat_started", None)
-
-        if video_chat is None:
+        if not active:
             # Jonli efir o'chgan — qayta yoqamiz
             logger.warning(f"⚠️ Jonli efir o'chib qolgan ({gid})! Qayta yoqilmoqda...")
             try:
@@ -377,10 +409,17 @@ async def monitor_live_stream(context: ContextTypes.DEFAULT_TYPE) -> None:
                 )
                 logger.info(f"✅ Qayta yoqildi: {gid}")
             except TelegramError as e:
-                if "already" not in str(e).lower():
+                err = str(e)
+                if "VOICE_CHAT_ALREADY_STARTED" in err or "already" in err.lower():
+                    logger.info(f"ℹ️ Allaqachon yoqiq: {gid}")
+                else:
                     logger.error(f"❌ Qayta yoqishda xato ({gid}): {e}")
         else:
-            logger.info(f"✅ Jonli efir faol: {gid} ({chat.title})")
+            try:
+                chat = await bot.get_chat(gid)
+                logger.info(f"✅ Jonli efir faol: {gid} ({chat.title})")
+            except Exception:
+                logger.info(f"✅ Jonli efir faol: {gid}")
 
 
 async def on_video_chat_ended(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -886,7 +925,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ═══════════════════════════════════════════════════════
 def main():
     init_db()
-    app = Application.builder().token(BOT_TOKEN).build()
+    app = Application.builder().token(BOT_TOKEN).post_init(post_init).build()
 
     # ── Komandalar ──────────────────────────────────────
     app.add_handler(CommandHandler("start",       cmd_start))
