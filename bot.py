@@ -1,5 +1,6 @@
 import logging
 import sqlite3
+import random
 from datetime import datetime
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
 from telegram.ext import (
@@ -11,6 +12,446 @@ from telegram.constants import ParseMode
 # ===================== SOZLAMALAR =====================
 BOT_TOKEN = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"   # @BotFather dan olingan token
 ADMIN_IDS = [8537782289]             # Admin Telegram ID lari (list)
+
+# ===================== JAVOBLAR BAZASI =====================
+# Format: "kalit so'z" : ["javob1", "javob2", "javob3", ...]
+RESPONSES = {
+    # --- SALOMLASHUVLAR ---
+    "salom": [
+        "Vaalaykum assalom! 😊",
+        "Assalomu alaykum! Xush kelibsiz! 👋",
+        "Salom-salom! Qandaysiz? 😄",
+        "Vaalaykum! Yaxshi kunlar tilaman! ☀️",
+        "Hey, salom! Nima gap? 😎",
+    ],
+    "assalom": [
+        "Vaalaykum assalom! 🙏",
+        "Assalomu alaykum! Yaxshi keldingiz! 😊",
+        "Vaalaykum! Xush kelibsiz guruhga! 🌟",
+        "Assalom! Xayrli kun! ☀️",
+    ],
+    "assalomu alaykum": [
+        "Va alaykum assalom va rahmatulloh! 🤲",
+        "Va alaykum assalom! Xayrli kun! 😊",
+        "Vaalaykum assalom! Yaxshi keldingiz! 🌟",
+    ],
+    "xayrli kun": [
+        "Sizga ham xayrli kun! ☀️😊",
+        "Xayrli kun! Omad tilayman! 🌟",
+        "Xayrli kun! Kayfiyatingiz yaxshi bo'lsin! 😄",
+        "Rahmat! Sizga ham baxtli kun! 🌈",
+    ],
+    "xayrli kech": [
+        "Sizga ham xayrli kech! 🌙✨",
+        "Xayrli kech! Yaxshi dam oling! 😊",
+        "Xayrli oqshom! 🌃",
+    ],
+    "xayrli tong": [
+        "Sizga ham xayrli tong! ☀️🌸",
+        "Xayrli tong! Yangi kun yangi imkoniyatlar! 🌅",
+        "Tong muborak! Omadli kun bo'lsin! 😊",
+    ],
+    "привет": [
+        "Привет! 😊 (Salom!)",
+        "Здравствуйте! Xush kelibsiz! 👋",
+        "Привет-привет! Как дела? 😄",
+    ],
+    "hello": [
+        "Hello! 👋 Welcome!",
+        "Hi there! 😊",
+        "Hey! Salom! 🌟",
+    ],
+    "hi": [
+        "Hi! 👋",
+        "Hey! Salom! 😊",
+        "Hello! Xush kelibsiz! 🌟",
+    ],
+
+    # --- XAYR AYTISH ---
+    "xayr": [
+        "Xayr! Ko'rishguncha! 👋",
+        "Xayr-xayr! Eson-omon yuring! 😊",
+        "Hayr! Yaxshi keting! 🌟",
+        "Ko'rishguncha! Sog' bo'ling! 🙏",
+    ],
+    "hayr": [
+        "Hayr! Ko'rishguncha! 👋",
+        "Eson-omon yuring! 🌟",
+        "Xayr! Yaxshi keting! 😊",
+    ],
+    "yaxshi kecha": [
+        "Sizga ham yaxshi kecha! 🌙✨",
+        "Yaxshi uxlang! Chiroyli tushlar! 😴🌙",
+        "Yaxshi kecha! Tinch uxlang! 🌃",
+    ],
+    "bye": [
+        "Bye! Ko'rishguncha! 👋",
+        "See you! Xayr! 😊",
+        "Bye-bye! 🌟",
+    ],
+
+    # --- HOLINI SO'RASH ---
+    "qalaysiz": [
+        "Yaxshi, rahmat! Siz-chi? 😊",
+        "Ajoyib! Sizga ham yaxshilik tilayman! 🌟",
+        "Hammasi zo'r! Siz qalaysiz? 😄",
+        "Yaxshi-yaxshi! 😊 Siz-chi, yaxshimisiz?",
+    ],
+    "qalay": [
+        "Yaxshi, rahmat! 😊 Siz-chi?",
+        "Zo'r! Hammasi joyida! 💪",
+        "Ajoyib kayfiyatda! 🌟 Siz-chi?",
+    ],
+    "yaxshimisiz": [
+        "Yaxshi, rahmat! Siz ham yaxshi bo'ling! 😊",
+        "Ha, juda yaxshi! Rahmat! 🌟",
+        "Yaxshi! Sizga ham yaxshilik! 💫",
+    ],
+    "nima gap": [
+        "Hech gap yo'q, tinch! 😄",
+        "Hammasi yaxshi, siz-chi? 😊",
+        "Gap yo'q! Yaxshi kunlar! ☀️",
+        "Tinchlik! Nima yangiliklar? 🌟",
+    ],
+    "как дела": [
+        "Отлично! Спасибо! 😊 (Zo'r!)",
+        "Всё хорошо! 🌟 (Hammasi yaxshi!)",
+        "Хорошо, спасибо! А у вас? 😄",
+    ],
+    "how are you": [
+        "I'm great, thanks! 😊",
+        "Fine, thank you! And you? 🌟",
+        "Doing well! Thanks for asking! 😄",
+    ],
+
+    # --- MINNATDORLIK ---
+    "rahmat": [
+        "Arzimaydi! 😊",
+        "Marhamat! 🌟",
+        "Iltimos! Doimo xizmatda! 💫",
+        "Xursand bo'ldim! 😄",
+        "Hech gap emas! 👍",
+    ],
+    "raxmat": [
+        "Arzimaydi! 😊",
+        "Marhamat! 🌟",
+        "Iltimos! 💫",
+    ],
+    "спасибо": [
+        "Пожалуйста! 😊 (Marhamat!)",
+        "Не за что! 🌟",
+        "Всегда пожалуйста! 💫",
+    ],
+    "thank you": [
+        "You're welcome! 😊",
+        "No problem! 🌟",
+        "Anytime! 💫",
+    ],
+    "thanks": [
+        "Sure thing! 😊",
+        "No worries! 🌟",
+        "Welcome! 👍",
+    ],
+
+    # --- KECHIRASIZ ---
+    "kechirasiz": [
+        "Hech gap emas! 😊",
+        "Ayb yo'q! 🌟",
+        "Muammo yo'q! 😄",
+    ],
+    "uzr": [
+        "Hech gap emas! 😊",
+        "Ayb yo'q, muammo yo'q! 🌟",
+        "Mayli! 😄",
+    ],
+    "извини": [
+        "Всё нормально! 😊 (Hech gap emas!)",
+        "Не переживай! 🌟",
+    ],
+
+    # --- MAQTOV / KOMPLIMENT ---
+    "zo'r": [
+        "Ha, rostdan ham zo'r! 💪🔥",
+        "Ajoyib! 🌟",
+        "Zo'r-zo'r! 👏",
+    ],
+    "super": [
+        "Super-super! 🔥💯",
+        "Juda zo'r! 🌟👏",
+        "Ajoyib! Super! ✨",
+    ],
+    "yaxshi": [
+        "Zo'r! 👍😊",
+        "Juda yaxshi! 🌟",
+        "Ajoyib! 😄",
+    ],
+    "bravo": [
+        "Bravo-bravo! 👏🎉",
+        "Zo'r! Tabriklayman! 🏆",
+        "Juda ajoyib! 🌟👏",
+    ],
+    "ajoyib": [
+        "Ha, chindan ham ajoyib! 🌟✨",
+        "Zo'r! 😄",
+        "Ajoyib-ajoyib! 💫",
+    ],
+    "молодец": [
+        "Спасибо! 😊 Juda yaxshi!",
+        "Благодарю! 🌟",
+        "Рад стараться! 💪",
+    ],
+
+    # --- HAZIL / KULGULARLAR ---
+    "haha": [
+        "😄😄 Ha-ha, kulgi yuqumli!",
+        "🤣 Kulgidan yiqilib tushayapman!",
+        "😂 Qiziq-qiziq!",
+    ],
+    "lol": [
+        "😂 LOL!",
+        "🤣 Juda kulgili!",
+        "😄 Ha-ha!",
+    ],
+    "😂": [
+        "😂😂 Kulgili ekan!",
+        "🤣 Men ham kulyapman!",
+        "😄 Qiziqchilik!",
+    ],
+    "хаха": [
+        "😄 Ha-ha!",
+        "🤣 Kulgili!",
+        "😂",
+    ],
+
+    # --- SAVOL SO'ZLARI ---
+    "nima": [
+        "Nima haqida gaplashyapmiz? 🤔",
+        "Yaxshilab tushuntiring, eshityapman! 👂",
+        "Qiziqarli savol! 🤔 Aytib bering!",
+    ],
+    "kim": [
+        "Kim haqida so'rayapsiz? 🤔",
+        "Aniqroq aytsa bo'ladimi? 😊",
+    ],
+    "qachon": [
+        "Vaqt haqida so'rayapsizmi? ⏰",
+        "Aniqroq savolingiz bormi? 🤔",
+    ],
+    "qayerda": [
+        "Joy haqida so'rayapsizmi? 📍",
+        "Qayerda ekanligini bilmayman 😅",
+    ],
+    "qanday": [
+        "Qanday qilib degani? 🤔",
+        "Tushuntirib bering, eshityapman! 👂",
+    ],
+    "nega": [
+        "Sababi... murakkab savol bu! 🤔",
+        "Yaxshi savol! Menam o'ylayman 😄",
+    ],
+    "nimaga": [
+        "Sababi bor albatta! 😄",
+        "Qiziqarli savol! 🤔",
+    ],
+
+    # --- SPORT ---
+    "futbol": [
+        "Futbol — eng yaxshi sport! ⚽🔥",
+        "Futbol sevaman! ⚽ Qaysi jamoa yoqadi?",
+        "Futbol haqida gapirsak bo'ladi! ⚽😄",
+    ],
+    "basketball": [
+        "Basketball! 🏀 Zo'r sport!",
+        "NBA ko'rasizmi? 🏀😊",
+    ],
+    "sport": [
+        "Sport — sog'liq! 💪🏃",
+        "Qaysi sportni yoqtirasiz? 🤸",
+        "Sport bilan shug'ullanish — zo'r! 💪",
+    ],
+    "gym": [
+        "Gym — juda yaxshi! 💪🏋️",
+        "Sog'lom tana — sog'lom aql! 💪",
+        "Zo'r! Gym — mening ham sevgilim! 🏋️",
+    ],
+
+    # --- OVQAT ---
+    "osh": [
+        "O'zbek oshi — dunyoning eng mazali taomi! 🍚😋",
+        "Osh desangiz, og'zim suv keldi! 🍚🔥",
+        "Mmmm, osh! Eng yaxshi ovqat! 😄",
+    ],
+    "ovqat": [
+        "Ovqat vaqti bo'ldimi? 😋🍽️",
+        "Nima eyapsiz? 😊",
+        "Qorin ochdi shekilli! 😄🍽️",
+    ],
+    "non": [
+        "Non — baraka! 🍞🙏",
+        "O'zbek noni — eng mazali! 😋",
+    ],
+    "shashlik": [
+        "Shashlik! 🍖🔥 Og'zim suv keldi!",
+        "Shashlik desangiz... boraman! 😄🔥",
+    ],
+    "pizza": [
+        "Pizza! 🍕 Juda mazali!",
+        "Pizza sevuvchilar — eng yaxshi odamlar! 🍕😄",
+    ],
+    "чай": [
+        "Чой ичiмizmi? ☕😊",
+        "Чой — umr barakasi! ☕",
+    ],
+    "чой": [
+        "Choy ichinglar, mehribon bo'lasizlar! ☕😊",
+        "Choy vaqti! ☕🌟",
+    ],
+
+    # --- TEXNOLOGIYA ---
+    "telegram": [
+        "Telegram — eng zo'r messenger! 📱✨",
+        "Telegram bor ekan, yaxshi! 😄📱",
+    ],
+    "internet": [
+        "Internet — zamonaviy hayot! 🌐💻",
+        "Internet tezligi yaxshimi? 😄🌐",
+    ],
+    "telefon": [
+        "Qaysi telefon ishlataysiz? 📱",
+        "Telefon — zamonaviy do'st! 📱😊",
+    ],
+    "kompyuter": [
+        "Kompyuter — zo'r asbob! 💻👨‍💻",
+        "Dasturlash o'rganayapsizmi? 💻😄",
+    ],
+
+    # --- MUSIQA ---
+    "musiqa": [
+        "Musiqa — ruhning ozuqasi! 🎵❤️",
+        "Qaysi musiqani yoqtirasiz? 🎵😊",
+        "Musiqa tinglash — ajoyib! 🎶",
+    ],
+    "kino": [
+        "Kino sevaman! 🎬😄",
+        "Qaysi janrdagi kino yoqadi? 🎬🍿",
+        "Kino kecha! 🎬🍿 Zo'r taklif!",
+    ],
+
+    # --- TABIIY JAVOBLAR ---
+    "ok": [
+        "Ok! 👍",
+        "Zo'r! ✅",
+        "Mayli! 😊",
+        "Tushunarli! 👍",
+    ],
+    "okay": [
+        "Okay! 👍😊",
+        "Zo'r! ✅",
+        "Mayli! 👌",
+    ],
+    "маъқул": [
+        "Zo'r! 👍",
+        "Mayli! 😊",
+    ],
+    "тушунарли": [
+        "Yaxshi! 👍",
+        "Zo'r! 😊",
+    ],
+    "ha": [
+        "Ha, to'g'ri! 👍",
+        "Albatta! 😊",
+        "Ha-ha! 🌟",
+    ],
+    "yo'q": [
+        "Mayli, muammo yo'q! 😊",
+        "Tushunarli! 👍",
+    ],
+    "bilmadim": [
+        "Hech gap emas, bilamiz! 😄",
+        "Bilib olamiz! 💪",
+        "Izlaymiz, topamiz! 🔍",
+    ],
+    "bilmayman": [
+        "Menam bilmayman 😅 Birgalikda o'rganamiz!",
+        "Google dost! 😄🔍",
+    ],
+    "🙏": [
+        "🙏 Arzimaydi!",
+        "🙏 Marhamat!",
+        "😊 Xursand bo'ldim!",
+    ],
+    "❤️": [
+        "❤️ Rahmat!",
+        "🥰 Siz ham!",
+        "💕 Xursand bo'ldim!",
+    ],
+    "👍": [
+        "👍 Zo'r!",
+        "✅ Yaxshi!",
+        "💪 Barakalla!",
+    ],
+
+    # --- TASHVISH / MUAMMO ---
+    "muammo": [
+        "Qanday muammo? Yordam berishga harakat qilaman! 💪",
+        "Muammo bo'lsa — birgalikda hal qilamiz! 🤝",
+    ],
+    "yordam": [
+        "Yordam beraman! Nima kerak? 😊",
+        "Xizmatda turaman! 💪",
+        "Qanday yordam kerak? 🌟",
+    ],
+    "qiyin": [
+        "Hamma narsa o'rganiladi! 💪😊",
+        "Qiyin emas, shunchaki yangi! 😄",
+        "Bardosh bering, bo'ladi! 💪",
+    ],
+    "charchad": [
+        "Dam oling, sog'liq muhim! 😊💤",
+        "Charchasangiz — dam olish vaqti! 🛋️",
+        "Sog'liq — eng katta boylik! 💪",
+    ],
+    "uxlayman": [
+        "Yaxshi uxlang! 😴🌙",
+        "Chiroyli tushlar! 🌙✨",
+        "Tinch uxlang! 😴",
+    ],
+    "yaxshimas": [
+        "Nima bo'ldi? Aytib bering! 😊",
+        "Muammo bo'lsa, gaplashsa bo'ladi! 🤝",
+    ],
+
+    # --- TABRIKLASH ---
+    "tabrik": [
+        "Tabriklayman! 🎉🎊",
+        "Muborak bo'lsin! 🎉",
+        "Baxt tilaman! 🌟🎊",
+    ],
+    "tug'ilgan kun": [
+        "Tug'ilgan kun muborak! 🎂🎉🎊",
+        "Ko'p yillar yashang! 🎂🎉",
+        "Baxtli tug'ilgan kun! 🎊🌟",
+    ],
+    "muborak": [
+        "Sizga ham muborak! 🎉😊",
+        "Muborak bo'lsin! 🌟🎊",
+    ],
+    "baxt": [
+        "Baxt hammaga nasib bo'lsin! 🌟😊",
+        "Baxtli bo'ling! 🌈💫",
+    ],
+}
+
+def get_auto_reply(text: str, user_name: str) -> str | None:
+    """Kalit so'z bo'yicha javob topadi, topsa random birini qaytaradi"""
+    text_lower = text.lower().strip()
+
+    # To'liq mos
+    for keyword, replies in RESPONSES.items():
+        if keyword in text_lower:
+            return random.choice(replies)
+
+    return None
 
 # ===================== LOGGING =====================
 logging.basicConfig(
@@ -207,31 +648,26 @@ async def track_chat_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
     user = update.effective_user
-    if not user or chat.type not in ("group", "supergroup"):
+    message = update.message
+
+    if not user or not message or chat.type not in ("group", "supergroup"):
         return
 
-    # Taqiqlangan guruh tekshiruvi
     if is_banned(chat.id):
         return
 
-    # Guruhni yangilash
     add_group(chat.id, chat.title, chat.username)
-
-    # Xabarni log qilish
     log_message(chat.id, user.id, user.username or user.first_name)
 
-    # Mention rejimi
-    mode = get_setting("mention_mode")
-    if mode != "on":
+    text = message.text or ""
+    if not text:
         return
 
-    mention_text = get_setting("mention_text") or "👋 {mention}"
     mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
-    reply = mention_text.replace("{mention}", mention)\
-                        .replace("{name}", user.first_name)\
-                        .replace("{group}", chat.title)
+    reply = get_auto_reply(text, user.first_name)
 
-    await update.message.reply_text(reply, parse_mode=ParseMode.HTML)
+    if reply:
+        await message.reply_text(f"{mention}, {reply}", parse_mode=ParseMode.HTML)
 
 # ===================== CALLBACK HANDLER =====================
 async def callback_handler(update: Update, context: ContextTypes.DEFAULT_TYPE):
