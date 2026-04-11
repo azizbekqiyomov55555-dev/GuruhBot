@@ -53,7 +53,7 @@ BOT_NAME     = "Yordamchi Bot"
 API_ID         = 37366974
 API_HASH       = "08d09c7ed8b7cb414ed6a99c104f1bd6"
 # ✅ Lokal skript bilan olingan string session (PHONE_NUMBER o'rniga)
-SESSION_STRING = "BU_YERGA_SESSION_STRING_YOZING"
+SESSION_STRING = "AgI6LL4AVCYtJZyPAePI39DYwLzwV74HqiuErGzh52J-0HkfA_ZoW9XZEResoB0T7upL-6kGyXlPX-egXLXsLSxANzQ9zl1b5zfhzHMaNKwtXUI4ly45EO6cv8Mik4TZ9gvqfk7kbWLCP0j83WrsdLj_09qkc9lqyQfxXnQS_yhxwDIeCiMnG0r6QG_nlczylA-WhRtoGoo-1KHq_4KEufih9yl2_xsgiwT66mR3iE9dAgLajnC6W-ZMiL7_aq-iFGTYAuwP7BD6canOmVB5esmSEM8Q9h_QiKLoigP44pK3UZWOJICRdvAm2DaAgFEne0SdVqcdHP_CcpEaNRqgxKlW__bmXQAAAAH85DgRAA"
 
 # ── Guruh ID lari ──────────────────────────────────────
 LIVE_GROUP_IDS = [
