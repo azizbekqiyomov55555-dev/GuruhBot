@@ -524,6 +524,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if update.effective_chat.type != "private": return
     user = update.effective_user
     bot_info = await context.bot.get_me()
+
     if is_admin(user.id):
         active, banned, total, today = get_stats()
         paused = context.bot_data.get("live_paused", False)
@@ -808,6 +809,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif d == "settings":
         paused = context.bot_data.get("live_paused", False)
+        # ✅ TUZATILDI: f-string ichida backslash ishlatilmaydi
+        monitoring_status = "To'xtatilgan" if paused else "Faol"
         await q.edit_message_text(
             "⚙️ <b>Bot Sozlamalari</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
             f"🤖 Bot nomi:           <b>{BOT_NAME}</b>\n"
@@ -816,7 +819,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"📡 Jonli efir guruhlar: <b>{len(LIVE_GROUP_IDS)} ta</b>\n"
             f"   1️⃣ <code>-1003835671404</code>\n"
             f"   2️⃣ <code>-1002823910957</code>\n\n"
-            f"🔴 Efir monitoring:    <b>{'To\'xtatilgan' if paused else 'Faol'}</b>\n"
+            f"🔴 Efir monitoring:    <b>{monitoring_status}</b>\n"
             f"⏱ Tekshirish:         <b>har {CHECK_INTERVAL} sek</b>\n"
             f"📢 Taklif xabari:      <b>har {INVITE_INTERVAL} sek</b>\n\n"
             "⚡ Barcha funksiyalar faol!",
