@@ -80,23 +80,32 @@ invite_links_db: dict = {}
 #           📡 PYROGRAM ORQALI JONLI EFIR (asosiy fix)
 # ═══════════════════════════════════════════════════════
 async def pyro_create_video_chat(chat_id: int, title: str = "🔴 Jonli Efir") -> bool:
-    """
-    Pyrogram MTProto orqali jonli efir yaratadi.
-    Bu Bot API'dan farqli — haqiqatda ishlaydi!
-    """
+    """Pyrogram raw API orqali jonli efir yaratadi."""
+    import random
+    from pyrogram.raw.functions.phone import CreateGroupCall
     global pyro_app
     if pyro_app is None or not pyro_app.is_connected:
         logger.error("❌ Pyrogram ulanmagan!")
         return False
     try:
-        await pyro_app.create_video_chat(chat_id, title=title)
-        logger.info(f"✅ Pyrogram: Jonli efir yoqildi → {chat_id}")
+        peer = await pyro_app.resolve_peer("PUBGCHAT20261")
+        await pyro_app.invoke(CreateGroupCall(
+            peer=peer,
+            random_id=random.randint(1, 2**31),
+            title=title
+        ))
+        logger.info(f"✅ Jonli efir yoqildi → {chat_id}")
         return True
     except FloodWait as e:
-        logger.warning(f"⏳ FloodWait {e.value} sekund: {chat_id}")
+        logger.warning(f"⏳ FloodWait {e.value} sekund")
         await asyncio.sleep(e.value)
         try:
-            await pyro_app.create_video_chat(chat_id, title=title)
+            peer = await pyro_app.resolve_peer("PUBGCHAT20261")
+            await pyro_app.invoke(CreateGroupCall(
+                peer=peer,
+                random_id=random.randint(1, 2**31),
+                title=title
+            ))
             return True
         except Exception:
             return False
@@ -105,7 +114,7 @@ async def pyro_create_video_chat(chat_id: int, title: str = "🔴 Jonli Efir") -
         if "GROUPCALL_ALREADY_STARTED" in err or "already" in err.lower():
             logger.info(f"ℹ️ Allaqachon yoqiq: {chat_id}")
             return True
-        logger.error(f"❌ Pyrogram create_video_chat xato ({chat_id}): {e}")
+        logger.error(f"❌ Pyrogram xato ({chat_id}): {e}")
         return False
     except Exception as e:
         logger.error(f"❌ Kutilmagan xato ({chat_id}): {e}")
