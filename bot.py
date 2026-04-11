@@ -1,11 +1,12 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║        🤖 YORDAMCHI BOT — TO'LIQ FINAL VERSIYA                  ║
-# ║   ✅ A'zo qo'shish + Taklif + 24/7 Avtomatik Jonli Efir         ║
+# ║        🤖 YORDAMCHI BOT — TO'LIQ FINAL VERSIYA v2              ║
+# ║   ✅ A'zo qo'shish + Taklif + 24/7 Avtomatik Jonli Efir        ║
+# ║   🔧 create_video_chat → HTTP API orqali (xatosiz)             ║
 # ╚══════════════════════════════════════════════════════════════════╝
 #
 # 💡 ISHGA TUSHIRISH:
-#   pip install python-telegram-bot==20.7
-#   python bot_final.py
+#   pip install python-telegram-bot==20.7 httpx
+#   python bot_v2.py
 #
 # ⚙️ BOT SOZLAMALARI (@BotFather):
 #   1. Bot Settings → Group Privacy → DISABLE
@@ -17,6 +18,8 @@ import logging
 import sqlite3
 import asyncio
 import random
+import httpx
+import urllib.parse
 from datetime import datetime
 from telegram import (
     Update, InlineKeyboardButton, InlineKeyboardMarkup,
@@ -36,19 +39,11 @@ BOT_TOKEN  = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"
 ADMIN_IDS  = [8537782289]
 BOT_NAME   = "Yordamchi Bot"
 
-# ── Guruh ID lari (to'g'ri formatda) ───────────────────
-# 1-guruh va 2-guruh — jonli efir shu ikkalasida yoqiladi
+# ── Guruh ID lari ──────────────────────────────────────
 LIVE_GROUP_IDS = [
     -1003835671404,   # 1-guruh
     -1002823910957,   # 2-guruh
 ]
-
-# Guruh username lari (a'zo qo'shish uchun) — @username ko'rinishida
-# Agar username yo'q bo'lsa bo'sh qoldiring, ID ishlatiladi
-GROUP_USERNAMES = {
-    -1003835671404: "",   # 1-guruh username (@...) bo'lsa shu yerga yozing
-    -1002823910957: "",   # 2-guruh username (@...) bo'lsa shu yerga yozing
-}
 
 LIVE_TITLE      = "🔴 24/7 Jonli Efir"
 CHECK_INTERVAL  = 30    # Har 30 sekundda jonli efirni tekshiradi
@@ -63,6 +58,82 @@ INVITE_MESSAGE = (
 
 # Taklif havola bazasi
 invite_links_db: dict = {}
+
+# Telegram Bot API base URL
+TG_API = f"https://api.telegram.org/bot{BOT_TOKEN}"
+
+
+# ═══════════════════════════════════════════════════════
+#           📡 HTTP API ORQALI VIDEO CHAT (asosiy fix)
+# ═══════════════════════════════════════════════════════
+async def tg_create_video_chat(chat_id: int, title: str = "🔴 Jonli Efir") -> bool:
+    """
+    Telegram Bot API ga to'g'ridan HTTP so'rov yuborib video chat yaratadi.
+    python-telegram-bot'ning create_video_chat metodi ba'zi versiyalarda
+    mavjud emas — shuning uchun HTTPx orqali to'g'ridan chaqiramiz.
+    """
+    url = f"{TG_API}/createVideoChat"
+    payload = {
+        "chat_id": chat_id,
+        "title": title,
+        "is_broadcast": True,
+    }
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, json=payload)
+            data = resp.json()
+            if data.get("ok"):
+                logger.info(f"✅ Video chat yaratildi (HTTP): {chat_id}")
+                return True
+            else:
+                desc = data.get("description", "")
+                if "VOICE_CHAT_ALREADY_STARTED" in desc or "already" in desc.lower():
+                    logger.info(f"ℹ️ Allaqachon yoqiq: {chat_id}")
+                    return True
+                logger.error(f"❌ createVideoChat xato ({chat_id}): {desc}")
+                return False
+    except Exception as e:
+        logger.error(f"❌ HTTP xato ({chat_id}): {e}")
+        return False
+
+
+async def tg_end_video_chat(chat_id: int) -> bool:
+    """HTTP orqali video chatni o'chiradi."""
+    url = f"{TG_API}/endVideoChat"
+    payload = {"chat_id": chat_id}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, json=payload)
+            data = resp.json()
+            return data.get("ok", False)
+    except Exception as e:
+        logger.error(f"❌ endVideoChat HTTP xato ({chat_id}): {e}")
+        return False
+
+
+async def tg_get_chat(chat_id: int) -> dict | None:
+    """HTTP orqali chat ma'lumotlarini oladi."""
+    url = f"{TG_API}/getChat"
+    payload = {"chat_id": chat_id}
+    try:
+        async with httpx.AsyncClient(timeout=15) as client:
+            resp = await client.post(url, json=payload)
+            data = resp.json()
+            if data.get("ok"):
+                return data.get("result", {})
+            return None
+    except Exception as e:
+        logger.error(f"❌ getChat HTTP xato ({chat_id}): {e}")
+        return None
+
+
+async def is_video_chat_active(chat_id: int) -> bool:
+    """Jonli efir yoqiq yoki o'chiqligini aniqlaydi."""
+    chat = await tg_get_chat(chat_id)
+    if not chat:
+        return False
+    # video_chat_started maydoni bor bo'lsa — faol
+    return "video_chat_started" in chat and chat["video_chat_started"] is not None
 
 
 # ═══════════════════════════════════════════════════════
@@ -233,16 +304,8 @@ def user_kb(bot_username):
 
 # ═══════════════════════════════════════════════════════
 #   👥 A'ZO QO'SHISH — TAKLIF TUGMASI BOSILGANDA
-#   Foydalanuvchini guruhning "Add Members" sahifasiga
-#   yo'naltiradi + invite link ham beradi
 # ═══════════════════════════════════════════════════════
 async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: int):
-    """
-    'Taklif qilish' tugmasi bosilganda:
-    1. Guruhning 'A'zo qo'shish' sahifasiga yo'naltiruvchi havola beradi
-    2. Shaxsiy invite link yaratib beradi
-    3. Kim qo'shsa bot guruhda maqtaydi
-    """
     user = query.from_user
 
     # ── 1. Invite link yaratish ──────────────────────────
@@ -265,35 +328,33 @@ async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: i
     try:
         chat = await context.bot.get_chat(gid)
         group_title = chat.title or "Guruh"
-        group_username = chat.username  # @username bo'lsa
     except TelegramError:
         group_title = "Guruh"
-        group_username = None
 
-    # ── 3. A'zo qo'shish URL (Telegram deep link) ───────
-    # "tg://add?slug=..." formati — foydalanuvchi kontaktlar ro'yxatidan tanlaydi
-    # Bu invite link'dan slug qismini olib ishlatadi
+    # ── 3. A'zo qo'shish URL — tg://add?slug=... ────────
+    # Bu Telegramda "Kontaktdan tanlash" oynasini ochadi
     try:
-        # t.me/+XXXXX yoki t.me/joinchat/XXXXX formatidan slug olamiz
-        raw_link = link_str
-        if "/+" in raw_link:
-            slug = raw_link.split("/+")[-1]
-        elif "joinchat/" in raw_link:
-            slug = raw_link.split("joinchat/")[-1]
+        raw = link_str  # t.me/+XXXX yoki t.me/joinchat/XXXX
+        if "/+" in raw:
+            slug = raw.split("/+")[-1]
+        elif "joinchat/" in raw:
+            slug = raw.split("joinchat/")[-1]
         else:
-            slug = raw_link.split("/")[-1].lstrip("+")
-        # Kontaktlardan tanlash uchun maxsus deep link
+            slug = raw.split("/")[-1].lstrip("+")
         add_members_url = f"tg://add?slug={slug}"
     except Exception:
         add_members_url = link_str
 
-    # ── 4. Ulashish URL (Telegram share) ────────────────
+    # ── 4. Ulashish URL ──────────────────────────────────
     share_text = (
         f"Assalom! 👋 Men sizni \"{group_title}\" guruhiga taklif qilmoqchiman!\n"
         f"Qo'shiling, zo'r guruh! 💪"
     )
-    import urllib.parse
-    share_url = f"https://t.me/share/url?url={urllib.parse.quote(link_str)}&text={urllib.parse.quote(share_text)}"
+    share_url = (
+        f"https://t.me/share/url?"
+        f"url={urllib.parse.quote(link_str)}"
+        f"&text={urllib.parse.quote(share_text)}"
+    )
 
     # ── 5. Xabar yuborish ────────────────────────────────
     await query.message.reply_text(
@@ -316,110 +377,55 @@ async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: i
             )],
         ])
     )
-
     logger.info(f"✅ Taklif havola yuborildi: {user.first_name} → {gid}")
 
 
 # ═══════════════════════════════════════════════════════
 #               🔴 JONLI EFIR FUNKSIYALARI
 # ═══════════════════════════════════════════════════════
-async def start_video_chat(bot: Bot, chat_id: int = None) -> dict:
+async def start_video_chat(bot: Bot = None, chat_id: int = None) -> dict:
     """
-    Jonli efir yoqadi.
-    chat_id=None → barcha LIVE_GROUP_IDS da yoqadi
-    Qaytaradi: {gid: True/False}
+    HTTP API orqali jonli efir yoqadi.
+    chat_id=None → barcha LIVE_GROUP_IDS da yoqadi.
     """
     targets = [chat_id] if chat_id else LIVE_GROUP_IDS
     results = {}
     for gid in targets:
-        try:
-            await bot.create_video_chat(
-                chat_id=gid,
-                title=LIVE_TITLE,
-                is_broadcast=True,
-            )
-            logger.info(f"✅ Jonli efir YOQILDI: {gid}")
-            results[gid] = True
-        except TelegramError as e:
-            err = str(e)
-            if "VOICE_CHAT_ALREADY_STARTED" in err or "already" in err.lower():
-                logger.info(f"ℹ️  Allaqachon yoqiq: {gid}")
-                results[gid] = True
-            else:
-                logger.error(f"❌ Jonli efir yoqishda xato ({gid}): {e}")
-                results[gid] = False
+        ok = await tg_create_video_chat(gid, LIVE_TITLE)
+        results[gid] = ok
     return results
-
-
-async def post_init(application) -> None:
-    """Bot ishga tushgandan keyin darhol jonli efirni yoqadi."""
-    logger.info("🚀 Bot ishga tushdi — jonli efir yoqilmoqda...")
-    await asyncio.sleep(5)
-    results = await start_video_chat(application.bot)
-    ok = sum(1 for v in results.values() if v)
-    logger.info(f"📡 Jonli efir: {ok}/{len(LIVE_GROUP_IDS)} guruhda yoqildi")
-
-
-async def is_video_chat_active(bot: Bot, chat_id: int) -> bool:
-    """Jonli efir yoqiq yoki o'chiqligini aniqlaydi."""
-    try:
-        chat = await bot.get_chat(chat_id)
-        # video_chat_started — aktiv bo'lsa ChatVideoChatStarted ob'ekti bo'ladi
-        vc = getattr(chat, "video_chat_started", None)
-        if vc is not None:
-            return True
-        # Ba'zi versiyalarda video_chat_members_count ishlatiladi
-        members = getattr(chat, "video_chat_members_count", None)
-        if members is not None and members > 0:
-            return True
-        return False
-    except TelegramError:
-        return False
 
 
 async def monitor_live_stream(context: ContextTypes.DEFAULT_TYPE) -> None:
     """
-    Har CHECK_INTERVAL sekundda IKKI GURUHDA ham jonli efirni tekshiradi.
-    O'chib qolsa — darhol qayta yoqadi va guruhga xabar beradi.
+    Har CHECK_INTERVAL sekundda ikkala guruhda jonli efirni tekshiradi.
+    O'chib qolsa — darhol HTTP API orqali qayta yoqadi.
     """
     if context.bot_data.get("live_paused", False):
         return
 
-    bot: Bot = context.bot
     for gid in LIVE_GROUP_IDS:
         try:
-            active = await is_video_chat_active(bot, gid)
+            active = await is_video_chat_active(gid)
         except Exception as e:
-            logger.error(f"Chat ma'lumoti olinmadi ({gid}): {e}")
+            logger.error(f"Tekshirishda xato ({gid}): {e}")
             continue
 
         if not active:
-            # Jonli efir o'chgan — qayta yoqamiz
-            logger.warning(f"⚠️ Jonli efir o'chib qolgan ({gid})! Qayta yoqilmoqda...")
-            try:
-                await bot.create_video_chat(
-                    chat_id=gid,
-                    title=LIVE_TITLE,
-                    is_broadcast=True,
-                )
-                await bot.send_message(
-                    chat_id=gid,
-                    text="🔴 <b>Jonli efir avtomatik qayta yoqildi!</b>\n📡 24/7 ishlaydi!",
-                    parse_mode=ParseMode.HTML
-                )
+            logger.warning(f"⚠️ Jonli efir o'chgan ({gid})! Qayta yoqilmoqda...")
+            ok = await tg_create_video_chat(gid, LIVE_TITLE)
+            if ok:
+                try:
+                    await context.bot.send_message(
+                        chat_id=gid,
+                        text="🔴 <b>Jonli efir avtomatik qayta yoqildi!</b>\n📡 24/7 ishlaydi!",
+                        parse_mode=ParseMode.HTML
+                    )
+                except Exception:
+                    pass
                 logger.info(f"✅ Qayta yoqildi: {gid}")
-            except TelegramError as e:
-                err = str(e)
-                if "VOICE_CHAT_ALREADY_STARTED" in err or "already" in err.lower():
-                    logger.info(f"ℹ️ Allaqachon yoqiq: {gid}")
-                else:
-                    logger.error(f"❌ Qayta yoqishda xato ({gid}): {e}")
         else:
-            try:
-                chat = await bot.get_chat(gid)
-                logger.info(f"✅ Jonli efir faol: {gid} ({chat.title})")
-            except Exception:
-                logger.info(f"✅ Jonli efir faol: {gid}")
+            logger.info(f"✅ Jonli efir faol: {gid}")
 
 
 async def on_video_chat_ended(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -431,27 +437,33 @@ async def on_video_chat_ended(update: Update, context: ContextTypes.DEFAULT_TYPE
         return
     logger.warning(f"🔴 Jonli efir O'CHDI ({chat_id})! 3 soniyadan keyin qayta yoqiladi...")
     await asyncio.sleep(3)
-    try:
-        await context.bot.create_video_chat(
-            chat_id=chat_id,
-            title=LIVE_TITLE,
-            is_broadcast=True,
-        )
-        await context.bot.send_message(
-            chat_id=chat_id,
-            text="🔴 <b>Jonli efir qayta yoqildi!</b> 📡",
-            parse_mode=ParseMode.HTML
-        )
+    ok = await tg_create_video_chat(chat_id, LIVE_TITLE)
+    if ok:
+        try:
+            await context.bot.send_message(
+                chat_id=chat_id,
+                text="🔴 <b>Jonli efir qayta yoqildi!</b> 📡",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
         logger.info(f"✅ Jonli efir qayta yoqildi: {chat_id}")
-    except TelegramError as e:
-        logger.error(f"❌ Yoqishda xato: {e}")
+
+
+async def post_init(application: Application) -> None:
+    """Bot ishga tushgandan keyin darhol jonli efirni yoqadi."""
+    logger.info("🚀 Bot ishga tushdi — jonli efir yoqilmoqda...")
+    await asyncio.sleep(5)
+    results = await start_video_chat()
+    ok = sum(1 for v in results.values() if v)
+    logger.info(f"📡 Jonli efir: {ok}/{len(LIVE_GROUP_IDS)} guruhda yoqildi")
 
 
 # ═══════════════════════════════════════════════════════
 #          📢 TAKLIF XABARI (har INVITE_INTERVAL sekund)
 # ═══════════════════════════════════════════════════════
 async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Har INVITE_INTERVAL sekundda IKKI GURUHGA ham taklif xabari yuboradi."""
+    """Har INVITE_INTERVAL sekundda ikkala guruhga taklif xabari yuboradi."""
     for gid in LIVE_GROUP_IDS:
         try:
             await context.bot.send_message(
@@ -474,11 +486,6 @@ async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
 #     🎉 YANGI A'ZO — KIM TAKLIF QILGANINI ANIQLASH
 # ═══════════════════════════════════════════════════════
 async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """
-    Yangi a'zo qo'shilganda:
-    - Kim taklif qilganini aniqlaydi
-    - Guruhda maqtov xabari yuboradi
-    """
     result = update.chat_member
     if not result:
         return
@@ -489,8 +496,8 @@ async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_
     if old_status in (ChatMember.LEFT, ChatMember.BANNED) and \
        new_status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
 
-        new_member     = result.new_chat_member.user
-        chat_id        = result.chat.id
+        new_member       = result.new_chat_member.user
+        chat_id          = result.chat.id
         invite_link_used = getattr(result, "invite_link", None)
 
         if invite_link_used and hasattr(invite_link_used, "invite_link"):
@@ -499,16 +506,13 @@ async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_
                 inviter_id, inviter_name, _ = invite_links_db[link_str]
                 inviter_mention = f'<a href="tg://user?id={inviter_id}">{inviter_name}</a>'
                 new_mention     = f'<a href="tg://user?id={new_member.id}">{new_member.first_name}</a>'
-                maqtov_sozlar = [
+                maqtovlar = [
                     f"🎉 <b>BARAKALLA!</b> {inviter_mention} birodar {new_mention}ni guruhga qo'shdi! 🤝\n"
                     f"Guruh kengaymoqda! Rahmat aka! 💪🌟",
-
                     f"👏 <b>ZO'R!</b> {inviter_mention} guruhimizga {new_mention}ni olib keldi!\n"
                     f"Barakalla, davom eting! 🔥",
-
                     f"🌟 {inviter_mention} — <b>GURUH QAHRAMONI!</b>\n"
                     f"{new_mention}ni qo'shdi! Ko'pchilik shunday qilsa guruh o'sadi! 💪🎊",
-
                     f"✨ <b>RAHMAT</b> {inviter_mention}!\n"
                     f"Yangi a'zo {new_mention} xush kelibsiz! 🎉\n"
                     f"Taklif qilgan uchun katta rahmat! 🤝",
@@ -516,7 +520,7 @@ async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_
                 try:
                     await context.bot.send_message(
                         chat_id=chat_id,
-                        text=random.choice(maqtov_sozlar),
+                        text=random.choice(maqtovlar),
                         parse_mode=ParseMode.HTML,
                     )
                 except Exception as e:
@@ -574,7 +578,7 @@ async def cmd_start_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Faqat adminlar uchun!")
         return
     await update.message.reply_text("⏳ Jonli efir yoqilmoqda (2 guruhda)...")
-    results = await start_video_chat(context.bot)
+    results = await start_video_chat()
     ok  = [str(g) for g, v in results.items() if v]
     err = [str(g) for g, v in results.items() if not v]
     text = "✅ Jonli efir yoqildi!\n\n"
@@ -591,11 +595,9 @@ async def cmd_stop_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
     context.bot_data["live_paused"] = True
     stopped = 0
     for gid in LIVE_GROUP_IDS:
-        try:
-            await context.bot.end_video_chat(gid)
+        ok = await tg_end_video_chat(gid)
+        if ok:
             stopped += 1
-        except TelegramError:
-            pass
     await update.message.reply_text(
         f"⛔ {stopped} ta guruhda jonli efir o'chirildi.\n"
         "Monitoring to'xtatildi.\n\n"
@@ -608,7 +610,7 @@ async def cmd_resume_live(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
     context.bot_data["live_paused"] = False
     await update.message.reply_text("▶️ Monitoring qayta boshlandi!")
-    await start_video_chat(context.bot)
+    await start_video_chat()
 
 async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     r = update.my_chat_member
@@ -618,15 +620,10 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
         if chat.type in ("group", "supergroup"):
             add_group(chat.id, chat.title, chat.username)
-            # Bot qo'shilganda shu guruhda jonli efir yoqishga harakat
             if chat.id in LIVE_GROUP_IDS and not context.bot_data.get("live_paused", False):
                 await asyncio.sleep(5)
-                try:
-                    await context.bot.create_video_chat(
-                        chat_id=chat.id, title=LIVE_TITLE, is_broadcast=True)
-                    logger.info(f"✅ Bot qo'shildi va efir yoqildi: {chat.title}")
-                except TelegramError as e:
-                    logger.error(f"Bot qo'shilganda efir yoqilmadi: {e}")
+                await tg_create_video_chat(chat.id, LIVE_TITLE)
+                logger.info(f"✅ Bot qo'shildi va efir yoqildi: {chat.title}")
 
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
@@ -706,7 +703,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid = q.from_user.id
     bot_info = await context.bot.get_me()
 
-    # ── TAKLIF TUGMASI — ASOSIY ──────────────────────────
+    # ── TAKLIF TUGMASI ────────────────────────────────────
     if d.startswith("invite_"):
         gid = int(d.split("_")[1])
         await handle_invite_button(q, context, gid)
@@ -768,16 +765,17 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif d == "live_status":
         paused = context.bot_data.get("live_paused", False)
         monitoring = "⏸ To'xtatilgan" if paused else "✅ Ishlayapti"
-        lines = [f"🔴 <b>Jonli Efir Holati</b>\n━━━━━━━━━━━━━━━━━━━━\n"
-                 f"👁 Monitoring: {monitoring}\n⏱ Interval: {CHECK_INTERVAL} sek\n"]
+        lines = [
+            f"🔴 <b>Jonli Efir Holati</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"👁 Monitoring: {monitoring}\n⏱ Interval: {CHECK_INTERVAL} sek\n"
+        ]
         for i, gid in enumerate(LIVE_GROUP_IDS, 1):
-            try:
-                chat = await context.bot.get_chat(gid)
-                vc    = getattr(chat, "video_chat_started", None)
-                efir  = "🔴 FAOL" if vc else "⚫ O'chiq"
-                title = chat.title or str(gid)
-            except Exception:
-                efir = "❓"; title = str(gid)
+            chat_data = await tg_get_chat(gid)
+            if chat_data:
+                efir  = "🔴 FAOL" if chat_data.get("video_chat_started") else "⚫ O'chiq"
+                title = chat_data.get("title", str(gid))
+            else:
+                efir = "❓ Xato"; title = str(gid)
             lines.append(f"{i}. <b>{title}</b>\n   {efir} | <code>{gid}</code>")
         toggle_label = "▶️ Yoqish" if paused else "⏸ To'xtatish"
         toggle_data  = "live_resume_cb" if paused else "live_pause_cb"
@@ -791,7 +789,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]))
 
     elif d == "live_start_cb":
-        results = await start_video_chat(context.bot)
+        results = await start_video_chat()
         context.bot_data["live_paused"] = False
         ok = sum(1 for v in results.values() if v)
         await q.edit_message_text(
@@ -804,11 +802,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         context.bot_data["live_paused"] = True
         stopped = 0
         for gid in LIVE_GROUP_IDS:
-            try:
-                await context.bot.end_video_chat(gid)
+            ok = await tg_end_video_chat(gid)
+            if ok:
                 stopped += 1
-            except TelegramError:
-                pass
         await q.edit_message_text(
             f"⛔ {stopped} ta guruhda jonli efir o'chirildi.",
             reply_markup=InlineKeyboardMarkup([[
@@ -824,7 +820,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     elif d == "live_resume_cb":
         context.bot_data["live_paused"] = False
-        await start_video_chat(context.bot)
+        await start_video_chat()
         await q.edit_message_text("▶️ Monitoring boshlandi! Jonli efir yoqilmoqda...",
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔙 Orqaga", callback_data="live_status")
@@ -950,24 +946,20 @@ def main():
         handle_group_message))
 
     # ── Job Queue ───────────────────────────────────────
-    # 24/7 Jonli efir monitoring — har 30 sekund
     app.job_queue.run_repeating(
         monitor_live_stream,
         interval=CHECK_INTERVAL,
-        first=10,   # Bot ishga tushgandan 10 soniya keyin birinchi tekshirish
+        first=15,
     )
-    # Taklif xabari — har 60 sekund
     app.job_queue.run_repeating(
         send_group_invite_message,
         interval=INVITE_INTERVAL,
-        first=20,
+        first=25,
     )
 
     logger.info("=" * 60)
     logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI!")
     logger.info(f"📡 Jonli efir monitoring: {len(LIVE_GROUP_IDS)} ta guruh")
-    logger.info(f"   1️⃣  -1003835671404")
-    logger.info(f"   2️⃣  -1002823910957")
     logger.info(f"⏱  Tekshirish: har {CHECK_INTERVAL} sekund")
     logger.info(f"📢 Taklif xabari: har {INVITE_INTERVAL} sekund")
     logger.info("=" * 60)
