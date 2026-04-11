@@ -1,12 +1,12 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║       🤖 YORDAMCHI + 24/7 JONLI EFIR BOT — TO'LIQ VERSIYA       ║
-# ║           Barcha funksiyalar + Avtomatik Live Stream             ║
+# ║    🤖 YORDAMCHI + 24/7 JONLI EFIR BOT — YANGILANGAN VERSIYA     ║
+# ║  ✅ Kontakt tanlash + Taklif + Avtomatik Live Stream             ║
 # ╚══════════════════════════════════════════════════════════════════╝
 #
 # 💡 MASLAHATLAR:
 #   1. Botni guruhga ADMIN sifatida qo'shing
 #   2. @BotFather → Bot Settings → Group Privacy → DISABLE qiling
-#   3. BOT_TOKEN, ADMIN_IDS va LIVE_GROUP_ID ni to'ldiring
+#   3. BOT_TOKEN, ADMIN_IDS va LIVE_GROUP_IDS ni to'ldiring
 #   4. "Manage Video Chats" admin ruxsatini bering
 #   5. pip install python-telegram-bot==20.7
 
@@ -16,7 +16,9 @@ import asyncio
 import random
 from datetime import datetime
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember, Bot
+    Update, InlineKeyboardButton, InlineKeyboardMarkup,
+    KeyboardButton, ReplyKeyboardMarkup, ReplyKeyboardRemove,
+    ChatMember, Bot
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -41,7 +43,7 @@ LIVE_TITLE     = "🔴 24/7 Jonli Efir"  # Efir nomi
 CHECK_INTERVAL = 60                    # Har necha sekundda tekshirsin
 
 # ── Taklif Xabari Sozlamalari ───────────────────────────
-INVITE_INTERVAL = 60                   # Har necha sekundda xabar tashlansin (60 = 1 daqiqa)
+INVITE_INTERVAL = 60                   # Har necha sekundda xabar tashlansin
 INVITE_MESSAGE  = (
     "👋 <b>Assalom aleykum birodarlar!</b>\n\n"
     "👥 Guruhga odam qo'shinlar akalar!\n"
@@ -51,6 +53,10 @@ INVITE_MESSAGE  = (
 
 # Taklif havola bazasi: invite_link → (user_id, user_name, chat_id)
 invite_links_db: dict = {}
+
+# Foydalanuvchi holati: taklif uchun guruh_id saqlash
+# user_id → gid
+pending_invite: dict = {}
 
 
 # ═══════════════════════════════════════════════════════
@@ -241,278 +247,52 @@ RESPONSES = {
         "Qoyil {name}, zo'r! 🌟",
         "{name}, qoyil qoldirdingiz! 🤩",
     ],
-    "молодец": [
-        "Спасибо {name}! 😊",
-        "Благодарю {name}! 🌟",
-    ],
-
-    # ── HAZIL / KULGU ─────────────────────────────────────
-    "haha": [
-        "😄 {name}, ha-ha, kulgi yuqumli!",
-        "🤣 {name}, kulgidan yiqilib tushayapman!",
-        "😂 Qiziq-qiziq {name}!",
-    ],
-    "lol": [
-        "😂 LOL {name}!",
-        "🤣 {name}, juda kulgili!",
-    ],
-    "хаха": [
-        "😄 Ha-ha {name}!",
-        "🤣 Kulgili {name}!",
-    ],
-
-    # ── LICH / PM ─────────────────────────────────────────
-    "lich yozing": [
-        "Yozing {name}, eshityapman! 📩😊",
-        "DM ochiq {name}! Yuboring! 📨✨",
-        "Lichkaga yozing {name}, javob beraman! 💬",
-        "{name}, xabar yuboring, kutib turaman! 💌",
-    ],
-    "lich": [
-        "{name}, lichkaga yuboring! 📩😊",
-        "DM ochiq {name}! Yozing! 💬✨",
-        "Lich yuboring {name}! 📨",
-    ],
-    "dm": [
-        "DM ochiq {name}! Yuboring! 📩😊",
-        "{name}, direct message yuboring! 💬",
-    ],
-
-    # ── MEHRIBON SO'ZLAR ──────────────────────────────────
-    "asalim": [
-        "Asal kabi shirin bo'ling {name}! 🍯😊",
-        "Voy {name}, asal! 🍯💕",
-        "{name}, shirin so'z yurakka yoqdi! 🍯✨",
-    ],
-    "jonim": [
-        "Jon bo'ling {name}! ❤️😊",
-        "Jonginam {name}! 🥰",
-        "{name}, yaxshi gaplar eshitish yoqadi! 😊❤️",
-    ],
-    "azizim": [
-        "Aziz bo'ling {name}! 💙😊",
-        "{name}, menga ham aziz bo'ldingiz! 🌟",
-    ],
-    "qo'zim": [
-        "Qo'zichoq {name}! 🐑😄",
-        "{name}, yoqimli so'z! 😊💕",
-    ],
-    "sevaman": [
-        "Sevgi go'zal his {name}! ❤️😊",
-        "Baxtli bo'ling {name}! 💕🌟",
-    ],
-    "sog'indim": [
-        "Sog'inish yaxshi belgi {name}! 🥺😊",
-        "{name}, biz ham sog'indik! 💕",
-    ],
-    "do'stim": [
-        "Do'st eng katta boylik {name}! 🤝😊",
-        "Do'stlik muqaddas {name}! 🤝🌟",
-    ],
-    "aka": [
-        "Ha aka {name}! Nima gap? 😊",
-        "Akam {name}! Aytingchi! 😄",
-    ],
-    "opa": [
-        "Ha opa {name}! Nima gap? 😊",
-        "Opam {name}! Aytingchi! 😄",
-    ],
-    "bro": [
-        "Bro {name}! Nima gap? 😎",
-        "Ha bro {name}! 🤜🤛",
-    ],
-    "sis": [
-        "Sis {name}! Yaxshimisiz? 😊",
-        "Ha sis {name}! 💕",
-    ],
-    "yaxshi ko'raman": [
-        "Rahmat {name}! Bu so'z yurakka yoqdi! 🥰❤️",
-        "{name}, siz ham yaxshi bo'ling! 💕",
-    ],
-
-    # ── KAYFIYAT ─────────────────────────────────────────
-    "kayfiyat": [
-        "Kayfiyat a'lo {name}! 🌟😄 Sizchi?",
-        "Zo'r kayfiyatda {name}! 🎉 Siz-chi?",
-        "{name}, kayfiyatingiz yaxshi bo'lsin! ☀️",
-    ],
-    "zerikdim": [
-        "{name}, zerikmaslik uchun shu yerda gaplashamiz! 😄",
-        "Zerikmang {name}, gaplashamiz! 😎",
-        "{name}, zerikish yo'q, biz bormiz! 🎉",
-    ],
-    "xursand": [
-        "{name}, xursandchilik yuqumli! 😄🎉",
-        "Xursand bo'ling {name}, doim! 🌟",
-    ],
-    "xafa": [
-        "{name}, xafa bo'lmang! 😊 Hamma yaxshi bo'ladi!",
-        "Xafachilik ketsin {name}! 🌈",
-        "{name}, yaxshi kunlar kutmoqda! ☀️💫",
-    ],
-    "g'amginman": [
-        "{name}, g'am ketsin! 🌈 Yaxshi kunlar keladi!",
-        "Sabr qiling {name}, o'tib ketadi! 💪😊",
-        "{name}, biz yoningdamiz! 🤝❤️",
-    ],
-    "yolg'iz": [
-        "{name}, yolg'iz emassiz, biz bormiz! 😊🤝",
-        "Bu guruhda do'stlar ko'p {name}! 🌟",
-    ],
-    "charchad": [
-        "{name}, dam oling, sog'liq muhim! 😊💤",
-        "Charchasangiz dam olish vaqti {name}! 🛋️",
-    ],
-    "uxlayman": [
-        "{name}, yaxshi uxlang! 😴🌙",
-        "Chiroyli tushlar {name}! 🌙✨",
-        "{name}, tinch uxlang! 😴",
-    ],
-    "yig'layapman": [
-        "{name}, ko'z yoshi — kuchning belgisi! 💪",
-        "Hamma narsa o'tadi {name}! 🌈 Sabr qiling!",
-    ],
-
-    # ── TABIIY JAVOBLAR ───────────────────────────────────
     "ok": [
         "Ok {name}! 👍",
         "Zo'r {name}! ✅",
         "Mayli {name}! 😊",
-        "Tushunarli {name}! 👍",
-    ],
-    "okay": [
-        "Okay {name}! 👍😊",
-        "Mayli {name}! 👌",
     ],
     "ha": [
         "Ha, to'g'ri {name}! 👍",
         "Albatta {name}! 😊",
-        "{name}, ha! 🌟",
-    ],
-    "albatta": [
-        "Albatta-albatta {name}! ✅😊",
-        "Ha albatta {name}! 🌟",
-        "{name}, shubhasiz! 💫",
     ],
     "omad": [
         "Omad tilayman {name}! 🍀💫",
         "{name}, omad har doim sizda bo'lsin! 🍀",
-        "Omadli bo'ling {name}! ✨🌟",
     ],
-    "bilmadim": [
-        "{name}, hech gap emas, bilamiz! 😄",
-        "Bilib olamiz {name}! 💪",
-        "Izlaymiz, topamiz {name}! 🔍",
-    ],
-    "bilmayman": [
-        "{name}, menam bilmayman 😅 Birgalikda o'rganamiz!",
-        "Google dost {name}! 😄🔍",
-    ],
-    "wow": [
-        "Wow {name}! 😲✨ Ajoyib!",
-        "WOW {name}! 🤩 Zo'r!",
-    ],
-    "voy": [
-        "Voy {name}! 😮 Nima bo'ldi?",
-        "{name}, qiziqarli! 😮✨",
-    ],
-    "ura": [
-        "Ura {name}! 🎉💪",
-        "Ura-ura {name}! 🎊🌟",
-    ],
-    "yey": [
-        "Yey {name}! 🎉🎊",
-        "Yey-yey {name}! 🥳",
-    ],
-    "yashasin": [
-        "Yashasin {name}! 🥳🎉",
-        "{name}, yashasin-yashasin! 🎊💫",
-    ],
-    "a'lo": [
-        "A'lo {name}! 💯🌟",
-        "A'lo natija {name}! 💯👏",
-    ],
-
-    # ── DUA SO'ZLARI ─────────────────────────────────────
     "inshalloh": [
         "Inshalloh, albatta bo'ladi {name}! 🤲🌟",
         "Inshalloh {name}! 🤲",
-        "{name}, Alloh xohlasa bo'ladi! 🤲✨",
     ],
     "mashalloh": [
         "Mashalloh {name}! 🤲🌟",
         "Mashalloh, barakali bo'lsin {name}! 🤲",
     ],
     "alhamdulillah": [
-        "Alhamdulillah {name}! 🤲 Yaxshilik doim bo'lsin!",
+        "Alhamdulillah {name}! 🤲",
         "Alhamdulillah {name}! 🤲🌟",
     ],
-    "subhanalloh": [
-        "Subhanalloh {name}! 🤲✨",
-        "Subhanalloh {name}, go'zal! 🤲",
-    ],
-
-    # ── TABRIKLASH ───────────────────────────────────────
     "tabrik": [
         "Tabriklayman {name}! 🎉🎊",
         "Muborak bo'lsin {name}! 🎉",
-        "Baxt tilaman {name}! 🌟🎊",
     ],
     "tug'ilgan kun": [
         "Tug'ilgan kun muborak {name}! 🎂🎉🎊",
         "Ko'p yillar yashang {name}! 🎂🎉",
-        "{name}, baxtli tug'ilgan kun! 🎊🌟",
-    ],
-    "muborak": [
-        "Sizga ham muborak {name}! 🎉😊",
-        "Muborak bo'lsin {name}! 🌟🎊",
-    ],
-    "maqsad": [
-        "Maqsadga erishish uchun harakat kerak {name}! 💪",
-        "{name}, maqsadli inson baxtli bo'ladi! 🌟",
-    ],
-
-    # ── HAYVONLAR ─────────────────────────────────────────
-    "mushuk": [
-        "Mushuk {name}! 🐱 Juda yoqimli!",
-        "{name}, mushuklar eng muloyim hayvonlar! 🐱😊",
-    ],
-    "it": [
-        "It sodiq do'st {name}! 🐕😊",
-        "{name}, itingiz bormi? 🐕",
-    ],
-
-    # ── EMOJI JAVOBLARI ───────────────────────────────────
-    "🙏": [
-        "🙏 Arzimaydi {name}!",
-        "🙏 Marhamat {name}!",
-        "😊 Xursand bo'ldim {name}!",
     ],
     "❤️": [
         "❤️ Rahmat {name}!",
         "🥰 Siz ham {name}!",
-        "💕 Xursand bo'ldim {name}!",
     ],
     "👍": [
         "👍 Zo'r {name}!",
         "✅ Yaxshi {name}!",
-        "💪 Barakalla {name}!",
     ],
     "🔥": [
         "🔥🔥 {name}, zo'r!",
-        "{name} 🔥 Zo'r!",
-    ],
-    "💪": [
-        "💪💪 {name}, kuchli!",
-        "Ha {name}, kuch-quvvat! 💪",
-    ],
-    "😍": [
-        "😍 Yoqimli {name}!",
-        "🥰 Zo'r {name}!",
     ],
     "🎉": [
         "🎉🎊 {name}, tabriklayman!",
-        "Bayram {name}! 🎉",
     ],
 }
 
@@ -807,7 +587,6 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             f"🌟 {mn}, guruhimizga marhamat! Yoqimli muhit yaratishda yordam bering! 😄",
             f"✨ {mn} bilan guruh yanada jonlandi! Xush kelibsiz! 🎉💫",
             f"💫 Xush kelibsiz {mn}! Savollaringiz bo'lsa bemalol so'rang! 😊",
-            f"🌈 {mn}, siz bilan guruhimiz to'ldi! Yaxshi vaqt o'tkazing! 😄🎉",
         ]
         await update.message.reply_text(random.choice(greets), parse_mode=ParseMode.HTML)
 
@@ -824,6 +603,161 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     reply = get_auto_reply(text, user.first_name)
     if reply:
         await msg.reply_text(reply, parse_mode=ParseMode.HTML)
+
+
+# ═══════════════════════════════════════════════════════
+#        📲 KONTAKT TANLASH — TAKLIF FUNKSIYASI (YANGI!)
+# ═══════════════════════════════════════════════════════
+
+async def send_contact_select_keyboard(update_or_query, context, gid: int, user):
+    """
+    Foydalanuvchiga kontakt tanlash uchun ReplyKeyboardMarkup yuboradi.
+    Bu Telegram'ning native "do'stni tanlash" UI'ini ochadi.
+    Keyin shu kontaktga taklif havolasi yuboriladi.
+    """
+    # Pending holatga saqlaymiz
+    pending_invite[user.id] = gid
+
+    # Kontakt ulashish tugmasi — Telegram native UI ochadi
+    kb = ReplyKeyboardMarkup(
+        [[KeyboardButton(
+            "👤 Do'st tanlash",
+            request_user=True,  # Telegram kontakt/foydalanuvchi tanlash oynasini ochadi
+        )]],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+    # Avval taklif havolasini tayyorlab qo'yamiz
+    try:
+        link_obj = await context.bot.create_chat_invite_link(
+            chat_id=gid,
+            name=f"Taklif_{user.id}_{int(datetime.now().timestamp())}",
+        )
+        link_str = link_obj.invite_link
+        invite_links_db[link_str] = (user.id, user.first_name, gid)
+        # Link'ni user_data'ga saqlaymiz
+        context.user_data[f"invite_link_{gid}"] = link_str
+    except TelegramError as e:
+        logger.error(f"Invite link yaratishda xato: {e}")
+        link_str = None
+
+    # Taklif xabari matni
+    if link_str:
+        share_url = (
+            f"https://t.me/share/url"
+            f"?url={link_str}"
+            f"&text=Assalom!+Guruhimizga+qo%27shiling+%F0%9F%91%8B"
+        )
+
+        # Foydalanuvchi xabar yuborgan joyga qarab javob beramiz
+        if hasattr(update_or_query, "message") and update_or_query.message:
+            # CallbackQuery
+            await update_or_query.message.reply_text(
+                "🔗 <b>Sizning shaxsiy taklif havolangiz tayyor!</b>\n\n"
+                "👇 Quyidagi tugmalardan birini tanlang:\n\n"
+                "1️⃣ <b>Do'st tanlash</b> — Telegramdagi do'stingizni belgilang\n"
+                "2️⃣ <b>Havola ulashish</b> — Linkni yuborib taklif qiling\n\n"
+                "Kimni qo'shsangiz, bot sizni ommaviy maqtaydi! 🎉",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb,
+            )
+            # Inline havola tugmasini ham qo'shamiz
+            await update_or_query.message.reply_text(
+                "📤 Yoki havola orqali taklif qiling:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📤 Havola ulashish", url=share_url)
+                ]])
+            )
+        else:
+            await update_or_query.reply_text(
+                "🔗 <b>Taklif havolangiz tayyor!</b>\n\n"
+                "👇 Do'stingizni tanlang yoki havolani yuboring:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=kb,
+            )
+            await update_or_query.reply_text(
+                "📤 Havola orqali taklif qiling:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📤 Havola ulashish", url=share_url)
+                ]])
+            )
+    else:
+        err_msg = "❌ Havola yaratishda xato. Bot guruhda admin ekanligini tekshiring."
+        if hasattr(update_or_query, "message") and update_or_query.message:
+            await update_or_query.message.reply_text(err_msg)
+        else:
+            await update_or_query.reply_text(err_msg)
+
+
+async def handle_user_shared(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """
+    Foydalanuvchi kontakt tanlaganda ishlaydi.
+    Tanlangan foydalanuvchiga taklif havolasini forward qiladi.
+    """
+    msg = update.message
+    user = update.effective_user
+    if not msg or not hasattr(msg, "user_shared") or not msg.user_shared:
+        return
+
+    selected_user_id = msg.user_shared.user_id
+    gid = pending_invite.pop(user.id, None)
+
+    if not gid:
+        await msg.reply_text(
+            "⚠️ Taklif sessiyasi tugagan. Iltimos qayta \"➕ Taklif qilish\" tugmasini bosing.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return
+
+    # Saqlangan havolani olamiz
+    link_str = context.user_data.get(f"invite_link_{gid}")
+
+    if link_str:
+        share_url = (
+            f"https://t.me/share/url"
+            f"?url={link_str}"
+            f"&text=Assalom!+Guruhimizga+qo%27shiling+%F0%9F%91%8B"
+        )
+        # Tanlangan foydalanuvchiga to'g'ridan-to'g'ri xabar yuborishga harakat
+        try:
+            await context.bot.send_message(
+                chat_id=selected_user_id,
+                text=(
+                    f"👋 Assalomu alaykum!\n\n"
+                    f"<b>{user.first_name}</b> sizni guruhga taklif qilmoqda! 🎉\n\n"
+                    f"🔗 Quyidagi havola orqali qo'shiling:"
+                ),
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("✅ Guruhga qo'shilish", url=link_str)
+                ]])
+            )
+            await msg.reply_text(
+                f"✅ <b>Do'stingizga taklif yuborildi!</b>\n\n"
+                f"Agar u qo'shilsa, bot sizni maqtaydi! 🎊",
+                parse_mode=ParseMode.HTML,
+                reply_markup=ReplyKeyboardRemove()
+            )
+        except TelegramError:
+            # Bot o'sha odamga yoza olmasa — share URL orqali
+            await msg.reply_text(
+                "📤 Do'stingizga bu havolani yuboring:",
+                reply_markup=ReplyKeyboardRemove()
+            )
+            await msg.reply_text(
+                f"🔗 {link_str}\n\n"
+                f"Yoki tugma orqali ulashing:",
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("📤 Havola ulashish", url=share_url)
+                ]])
+            )
+    else:
+        await msg.reply_text(
+            "❌ Havola topilmadi. Iltimos qayta urinib ko'ring.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+
 
 async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
@@ -865,6 +799,66 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📢 <b>Yuborildi!</b>\n✅ Muvaffaqiyatli: <b>{sent}</b>\n❌ Xato: <b>{failed}</b>",
             parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+
+
+# ═══════════════════════════════════════════════════════
+#                📢 TAKLIF XABARI FUNKSIYALARI
+# ═══════════════════════════════════════════════════════
+
+async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Har INVITE_INTERVAL sekundda guruhlarga taklif xabari yuboradi."""
+    for gid in LIVE_GROUP_IDS:
+        try:
+            await context.bot.send_message(
+                chat_id=gid,
+                text=INVITE_MESSAGE,
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton(
+                        "➕ Taklif qilish",
+                        callback_data=f"invite_{gid}"
+                    )
+                ]])
+            )
+            logger.info(f"📢 Taklif xabari yuborildi: {gid}")
+        except Exception as e:
+            logger.error(f"Taklif xabarini yuborishda xato ({gid}): {e}")
+
+
+async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Yangi a'zo qo'shilganda, uni kim taklif qilganini aniqlaydi va minnatdorlik bildiradi."""
+    result = update.chat_member
+    if not result:
+        return
+
+    old_status = result.old_chat_member.status
+    new_status = result.new_chat_member.status
+
+    if old_status in (ChatMember.LEFT, ChatMember.BANNED) and \
+       new_status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
+
+        new_member = result.new_chat_member.user
+        chat_id    = result.chat.id
+        invite_link_used = getattr(result, "invite_link", None)
+
+        if invite_link_used and hasattr(invite_link_used, "invite_link"):
+            link_str = invite_link_used.invite_link
+            if link_str in invite_links_db:
+                inviter_id, inviter_name, _ = invite_links_db[link_str]
+                inviter_mention = f'<a href="tg://user?id={inviter_id}">{inviter_name}</a>'
+                new_mention     = f'<a href="tg://user?id={new_member.id}">{new_member.first_name}</a>'
+                try:
+                    await context.bot.send_message(
+                        chat_id=chat_id,
+                        text=(
+                            f"🎉 Rahmat birodar {inviter_mention}!\n\n"
+                            f"Siz <b>{new_mention}</b>ni guruhga qo'shdingiz! 🤝\n"
+                            f"Barakalla, guruh kengaymoqda! 💪🌟"
+                        ),
+                        parse_mode=ParseMode.HTML,
+                    )
+                except Exception as e:
+                    logger.error(f"Taklif minnatdorlik xabarida xato: {e}")
 
 
 # ═══════════════════════════════════════════════════════
@@ -919,39 +913,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode=ParseMode.HTML, reply_markup=user_kb(bot_info.username)
         ); return
 
-    # ── TAKLIF TUGMASI (barcha foydalanuvchilar uchun) ──
+    # ── TAKLIF TUGMASI — YANGILANGAN (kontakt tanlash UI) ──
     if d.startswith("invite_"):
         gid = int(d.split("_")[1])
         user = q.from_user
-        try:
-            # Foydalanuvchi uchun maxsus taklif havolasi yaratish
-            link_obj = await context.bot.create_chat_invite_link(
-                chat_id=gid,
-                name=f"Taklif_{user.id}",
-            )
-            link_str = link_obj.invite_link
-            # Bazaga saqlash
-            invite_links_db[link_str] = (user.id, user.first_name, gid)
-
-            share_url = (
-                f"https://t.me/share/url"
-                f"?url={link_str}"
-                f"&text=Assalom!+Guruhimizga+qo%27shiling+%F0%9F%91%8B"
-            )
-            await q.message.reply_text(
-                f"🔗 <b>Sizning shaxsiy taklif havolangiz tayyor!</b>\n\n"
-                f"Quyidagi tugmani bosib do'stlaringizni taklif qiling.\n"
-                f"Kimni qo'shsangiz, bot sizni ommaviy maqtaydi! 🎉",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("📤 Do'stlarni taklif qilish", url=share_url)
-                ]])
-            )
-        except TelegramError as e:
-            await q.message.reply_text(
-                "❌ Havola yaratishda xato. Bot guruhda admin ekanligini tekshiring."
-            )
-            logger.error(f"Invite link yaratishda xato: {e}")
+        await send_contact_select_keyboard(q, context, gid, user)
         return
 
     # ── ADMIN ──
@@ -1140,67 +1106,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # ═══════════════════════════════════════════════════════
-#              📢 TAKLIF XABARI FUNKSIYALARI
-# ═══════════════════════════════════════════════════════
-
-async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Har INVITE_INTERVAL sekundda guruhlarga taklif xabari yuboradi."""
-    for gid in LIVE_GROUP_IDS:
-        try:
-            await context.bot.send_message(
-                chat_id=gid,
-                text=INVITE_MESSAGE,
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton(
-                        "➕ Taklif qilish",
-                        callback_data=f"invite_{gid}"
-                    )
-                ]])
-            )
-            logger.info(f"📢 Taklif xabari yuborildi: {gid}")
-        except Exception as e:
-            logger.error(f"Taklif xabarini yuborishda xato ({gid}): {e}")
-
-
-async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Yangi a'zo qo'shilganda, uni kim taklif qilganini aniqlaydi va minnatdorlik bildiradi."""
-    result = update.chat_member
-    if not result:
-        return
-
-    old_status = result.old_chat_member.status
-    new_status = result.new_chat_member.status
-
-    # Yangi a'zo qo'shildi
-    if old_status in (ChatMember.LEFT, ChatMember.BANNED) and \
-       new_status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
-
-        new_member = result.new_chat_member.user
-        chat_id    = result.chat.id
-        invite_link_used = getattr(result, "invite_link", None)
-
-        if invite_link_used and hasattr(invite_link_used, "invite_link"):
-            link_str = invite_link_used.invite_link
-            if link_str in invite_links_db:
-                inviter_id, inviter_name, _ = invite_links_db[link_str]
-                inviter_mention = f'<a href="tg://user?id={inviter_id}">{inviter_name}</a>'
-                new_mention     = f'<a href="tg://user?id={new_member.id}">{new_member.first_name}</a>'
-                try:
-                    await context.bot.send_message(
-                        chat_id=chat_id,
-                        text=(
-                            f"🎉 Rahmat birodar {inviter_mention}!\n\n"
-                            f"Siz <b>{new_mention}</b>ni guruhga qo'shdingiz! 🤝\n"
-                            f"Barakalla, guruh kengaymoqda! 💪🌟"
-                        ),
-                        parse_mode=ParseMode.HTML,
-                    )
-                except Exception as e:
-                    logger.error(f"Taklif minnatdorlik xabarida xato: {e}")
-
-
-# ═══════════════════════════════════════════════════════
 #                    🚀 ISHGA TUSHIRISH
 # ═══════════════════════════════════════════════════════
 def main():
@@ -1226,6 +1131,13 @@ def main():
         on_video_chat_ended
     ))
 
+    # ── Kontakt tanlash (user_shared) handler — YANGI ──
+    # Foydalanuvchi "Do'st tanlash" tugmasidan biror odamni tanlaganda ishlaydi
+    app.add_handler(MessageHandler(
+        filters.StatusUpdate.USER_SHARED,
+        handle_user_shared
+    ))
+
     # ── Callback va xabarlar ──
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(MessageHandler(
@@ -1246,7 +1158,7 @@ def main():
     app.job_queue.run_repeating(
         send_group_invite_message,
         interval=INVITE_INTERVAL,
-        first=20,  # Bot ishga tushgandan 20 soniya keyin birinchi xabar
+        first=20,
     )
 
     logger.info(f"🚀 {BOT_NAME} ishga tushdi!")
