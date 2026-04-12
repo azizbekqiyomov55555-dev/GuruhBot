@@ -250,23 +250,67 @@ def user_kb(bot_username):
 
 
 # ═══════════════════════════════════════════════════════
-#   🔔 OBUNA TEKSHIRUVI
+#   🔔 OBUNA TEKSHIRUVI — ISHONCHLI VERSIYA
 # ═══════════════════════════════════════════════════════
 async def check_subscription(bot, user_id: int) -> bool:
+    """
+    True  = obuna bor yoki kanal o'rnatilmagan
+    False = obuna yo'q
+    """
     ch_username, _ = get_channel_settings()
     if not ch_username:
-        # Kanal o'rnatilmagan → tekshiruvsiz o'tkazib yuborish
-        return True
+        return True  # kanal yo'q → barchaga ruxsat
+
+    # @ bo'lmasa qo'shib olamiz
+    channel_id = ch_username if ch_username.startswith("@") else "@" + ch_username
+
     try:
-        member = await bot.get_chat_member(chat_id=ch_username, user_id=user_id)
-        return member.status in (
-            ChatMember.MEMBER,
-            ChatMember.ADMINISTRATOR,
-            ChatMember.OWNER,
-        )
+        member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
+        status = member.status
+        logger.info(f"Obuna tekshiruv: user={user_id} status={status} channel={channel_id}")
+
+        # KICKED yoki LEFT = obuna yo'q; qolgan hamma holat = obuna bor
+        if status in ("kicked", "left"):
+            return False
+        return True
+
     except TelegramError as e:
-        logger.error(f"Obuna tekshirishda xato ({user_id}): {e}")
-        return False
+        err_msg = str(e).lower()
+        logger.error(f"Obuna tekshirishda xato user={user_id}: {e}")
+
+        # "user not found" = botga /start bosmagan → obunani tekshirib bo'lmaydi
+        # Bunday holatda ham bloklaymiz (xavfsiz tomon)
+        if "user not found" in err_msg:
+            return False
+        # "chat not found" = kanal username noto'g'ri → o'tkazib yuboramiz
+        if "chat not found" in err_msg:
+            logger.warning(f"Kanal topilmadi: {channel_id} — tekshiruv o'chirib yuborildi")
+            return True
+        # Boshqa xatolar (network va h.k.) → o'tkazib yuboramiz
+        return True
+
+
+async def send_not_subscribed_message(query, user, ch_username: str, ch_link: str, gid: int):
+    """Obuna yo'q bo'lganda ko'rsatiladigan xabar."""
+    await query.answer("❌ Avval kanalga obuna bo'ling!", show_alert=True)
+    try:
+        await query.message.reply_text(
+            f"🔔 <b>{user.first_name}, diqqat!</b>\n\n"
+            f"❌ Taklif qilish uchun avval kanalga obuna bo'ling!\n\n"
+            f"📢 Kanal: <b>{ch_username}</b>\n\n"
+            f"1️⃣ Quyidagi tugma orqali kanalga o'ting\n"
+            f"2️⃣ <b>Obuna bo'ling</b>\n"
+            f"3️⃣ Orqaga qaytib <b>«Tekshirish»</b> tugmasini bosing",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📢 Kanalga obuna bo'lish", url=ch_link)],
+                # Tekshirish tugmasi — obuna bo'lgandan keyin bosadi
+                [InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub_{gid}")],
+            ])
+        )
+    except Exception as e:
+        logger.error(f"Obuna xabari yuborishda xato: {e}")
+    logger.info(f"Obunasiz bloklandi: {user.first_name} ({user.id})")
 
 
 # ═══════════════════════════════════════════════════════
@@ -276,22 +320,11 @@ async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: i
     user = query.from_user
     ch_username, ch_link = get_channel_settings()
 
-    # ── Obuna tekshiruvi (faqat kanal o'rnatilgan bo'lsa) ──
+    # ── Obuna tekshiruvi ──────────────────────────────
     if ch_username:
-        is_subscribed = await check_subscription(context.bot, user.id)
-        if not is_subscribed:
-            await query.answer("❌ Avval kanalga obuna bo'ling!", show_alert=True)
-            await query.message.reply_text(
-                f"🔔 <b>{user.first_name}, diqqat!</b>\n\n"
-                f"❌ Taklif qilish uchun avval bizning kanalga obuna bo'ling!\n\n"
-                f"📢 Kanal: <b>{ch_username}</b>\n\n"
-                f"✅ Obuna bo'lgach <b>«➕ Taklif qilish»</b> tugmasini qayta bosing.",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[
-                    InlineKeyboardButton("📢 Kanalga obuna bo'lish", url=ch_link)
-                ]])
-            )
-            logger.info(f"🚫 Obunasiz bloklandi: {user.first_name} ({user.id})")
+        subscribed = await check_subscription(context.bot, user.id)
+        if not subscribed:
+            await send_not_subscribed_message(query, user, ch_username, ch_link, gid)
             return
 
     # ── Guruh nomini olish ──
@@ -600,7 +633,31 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await handle_invite_button(q, context, gid)
         return
 
-    if d == "how_to_add":
+    # ── Obuna tekshirish — foydalanuvchi "Tekshirish" bosdi ──────────
+    if d.startswith("check_sub_"):
+        gid = int(d.split("_")[2])
+        user = q.from_user
+        ch_username, ch_link = get_channel_settings()
+        subscribed = await check_subscription(context.bot, user.id)
+        if subscribed:
+            await q.answer("✅ Obuna tasdiqlandi!", show_alert=False)
+            await handle_invite_button(q, context, gid)
+        else:
+            await q.answer("❌ Siz hali obuna bo'lmadingiz!", show_alert=True)
+            try:
+                await q.message.reply_text(
+                    f"❌ <b>{user.first_name}, obuna topilmadi!</b>\n\n"
+                    f"📢 Avval <b>{ch_username}</b> kanaliga obuna bo'ling,\n"
+                    f"so'ng <b>«Tekshirish»</b> tugmasini bosing.",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("📢 Kanalga o'tish", url=ch_link)],
+                        [InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub_{gid}")],
+                    ])
+                )
+            except Exception:
+                pass
+        return
         await q.edit_message_text(
             "📖 <b>Botni guruhga qo'shish</b>\n\n"
             "1️⃣ «Guruhga qo'shish» tugmasini bosing\n"
