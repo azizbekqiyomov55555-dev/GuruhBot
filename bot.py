@@ -699,7 +699,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💬 Jami xabarlar:    <b>{total}</b>\n"
             f"📅 Bugun:            <b>{today}</b>\n"
             f"🏠 Taklif guruhi:    <b>{len(groups)} ta</b>\n"
-            f"🔔 Kanal:            <b>{ch_username or 'Yo'q'}</b>\n\n"
+            f"🔔 Kanal:            <b>{ch_username if ch_username else 'Yoq'}</b>\n\n"
             f"🕐 <i>{datetime.now().strftime('%Y-%m-%d %H:%M')}</i>",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")]]))
@@ -714,7 +714,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💬 Kalit so'zlar:     <b>{len(RESPONSES)}</b>\n\n"
             f"📢 Taklif xabari:     <b>har {INVITE_INTERVAL} sek</b>\n"
             f"🏠 Faol guruhlar:     <b>{len(groups)} ta</b>\n"
-            f"🔔 Majburiy kanal:    <b>{ch_username or 'O'rnatilmagan'}</b>\n\n"
+            f"🔔 Majburiy kanal:    <b>{ch_username if ch_username else 'Ornatilmagan'}</b>\n\n"
             "⚡ Barcha funksiyalar faol!",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")]]))
@@ -809,7 +809,8 @@ def main():
     ch_username, _ = get_channel_settings()
     logger.info("=" * 60)
     logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI! (v7)")
-    logger.info(f"🔔 Majburiy kanal: {ch_username or 'O'rnatilmagan (panel orqali qo'shing)'}")
+    kanal_info = ch_username if ch_username else "Ornatilmagan (panel orqali qoshing)"
+    logger.info(f"🔔 Majburiy kanal: {kanal_info}")
     logger.info("=" * 60)
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
