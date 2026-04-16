@@ -765,6 +765,29 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 
     text = msg.text or ""
 
+    # Jonli efir yoqilganda ovozli/video xabarlarni bloklash
+    if not is_admin(user.id) and get_livestream_status(chat.id):
+        if msg.voice or msg.video_note or msg.video:
+            try:
+                await msg.delete()
+            except Exception:
+                pass
+            user_mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
+            try:
+                sent = await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=(
+                        f"🔴 {user_mention}, jonli efir davomida "
+                        f"ovozli/video xabar yuborish <b>taqiqlangan!</b>"
+                    ),
+                    parse_mode=ParseMode.HTML
+                )
+                await asyncio.sleep(5)
+                await sent.delete()
+            except Exception:
+                pass
+            return
+
     if not is_admin(user.id) and text and contains_bad_word(text):
         await mute_user_for_swearing(context.bot, chat.id, user, msg.message_id)
         return
@@ -1708,6 +1731,9 @@ def main():
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND, handle_admin_pm))
     app.add_handler(MessageHandler(
         filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND, handle_group_message))
+    app.add_handler(MessageHandler(
+        filters.ChatType.GROUPS & (filters.VOICE | filters.VIDEO_NOTE | filters.VIDEO) & ~filters.COMMAND,
+        handle_group_message))
 
     app.job_queue.run_repeating(send_group_invite_message, interval=INVITE_INTERVAL, first=30)
 
