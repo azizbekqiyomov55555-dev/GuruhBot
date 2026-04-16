@@ -363,13 +363,19 @@ def user_kb(bot_username):
 
 # Admin huquqlari uchun checkbox-style klaviatura
 PERM_LABELS = {
-    "can_manage_chat":      "🔧 Guruhni boshqarish",
-    "can_delete_messages":  "🗑 Xabarlarni o'chirish",
-    "can_restrict_members": "🔇 Foydalanuvchini cheklash",
-    "can_invite_users":     "🔗 Odam taklif qilish",
-    "can_pin_messages":     "📌 Xabarni pin qilish",
-    "can_manage_video_chats": "📡 Video chatni boshqarish",
-    "can_promote_members":  "👑 Admin qo'shish",
+    "can_manage_chat":        "🔧 Guruhni boshqarish",
+    "can_change_info":        "📝 Guruh ma'lumotini o'zgartirish",
+    "can_delete_messages":    "🗑 Xabarlarni o'chirish",
+    "can_restrict_members":   "🔇 Foydalanuvchilarni bloklash",
+    "can_invite_users":       "🔗 Havola orqali taklif qilish",
+    "can_pin_messages":       "📌 Xabarlarni qadash",
+    "can_manage_video_chats": "📡 Jonli efirlarni boshqarish",
+    "can_promote_members":    "👑 Yangi adminlar qo'shish",
+    "can_manage_topics":      "🏷 A'zo teglarini tahrirlash",
+    "can_post_stories":       "📖 Hikoya joylash",
+    "can_edit_stories":       "✏️ Hikoyalarni tahrirlash",
+    "can_delete_stories":     "🗑 Hikoyalarni o'chirish",
+    "is_anonymous":           "👻 Anonimlik",
 }
 
 def get_perm_kb(selected: set, chat_id: int, user_id: int):
@@ -1373,7 +1379,9 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("Xato!", show_alert=True)
             return
         selected = context.user_data.get("perm_selected", set())
-        kwargs = {k: (k in selected) for k in PERM_LABELS.keys()}
+        # is_anonymous alohida, qolganlarini dinamik uzatamiz
+        kwargs = {k: (k in selected) for k in PERM_LABELS.keys() if k != "is_anonymous"}
+        kwargs["is_anonymous"] = "is_anonymous" in selected
         try:
             await context.bot.promote_chat_member(
                 chat_id=perm_chat_id,
