@@ -1,11 +1,14 @@
 # ╔══════════════════════════════════════════════════════════════════╗
-# ║        🤖 YORDAMCHI BOT — VERSIYA v8                           ║
+# ║        🤖 YORDAMCHI BOT — VERSIYA v9                           ║
 # ║   ✅ Admin panel orqali kanal o'rnatish/o'chirish              ║
 # ║   ✅ Guruhda yozish uchun kanalga OBUNA bo'lish shart          ║
 # ║   ✅ Guruhda yozish uchun 2 DO'ST TAKLIF qilish shart         ║
 # ║   ✅ Chat ID avtomatik aniqlanadi                               ║
 # ║   ✅ Har 2 daqiqada taklif xabari                               ║
 # ║   ✅ Taklif qilgan odam maqtaladi                               ║
+# ║   ✅ JONLI EFIR boshqaruvi (yoqish/o'chirish)                  ║
+# ║   ✅ So'kingan foydalanuvchini avtomatik MUTE qilish           ║
+# ║   ✅ Admin panel orqali guruhga ADMIN qo'shish/o'chirish       ║
 # ╚══════════════════════════════════════════════════════════════════╝
 #
 # 💡 ISHGA TUSHIRISH:
@@ -14,7 +17,8 @@
 # ⚙️ BOT SOZLAMALARI (@BotFather):
 #   1. Bot Settings → Group Privacy → DISABLE
 #   2. Botni guruhga ADMIN qiling
-#   3. Admin ruxsatlari: ✅ Invite Users, ✅ Add Members, ✅ Delete Messages
+#   3. Admin ruxsatlari: ✅ Invite Users, ✅ Add Members,
+#      ✅ Delete Messages, ✅ Restrict Members, ✅ Promote Members
 #   4. Botni kanalga ham ADMIN qiling (obuna tekshirish uchun)
 
 import logging
@@ -22,10 +26,11 @@ import sqlite3
 import asyncio
 import random
 import urllib.parse
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from telegram import (
-    Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
+    Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember,
+    ChatPermissions
 )
 from telegram.ext import (
     Application, CommandHandler, MessageHandler,
@@ -43,6 +48,7 @@ ADMIN_IDS        = [8537782289]
 BOT_NAME         = "Yordamchi Bot"
 INVITE_INTERVAL  = 120
 REQUIRED_INVITES = 2   # Guruhda yozish uchun taklif qilish kerak bo'lgan do'st soni
+MUTE_DURATION    = 10  # Mute davomiyligi (daqiqa)
 
 INVITE_MESSAGE = (
     "👋 <b>Assalom aleykum birodarlar!</b>\n\n"
@@ -52,6 +58,27 @@ INVITE_MESSAGE = (
 )
 
 invite_links_db: dict = {}  # link → (user_id, user_name, chat_id)
+
+# ═══════════════════════════════════════════════════════
+#   🔞 SO'KINISH FILTRI — HAQORATLI SO'ZLAR RO'YXATI
+# ═══════════════════════════════════════════════════════
+# Kerak bo'lsa so'zlarni qo'shing / o'zgartiring
+BAD_WORDS = [
+    # O'zbek
+    "siksana", "sikdir", "orospu", "qaltiraban", "yaramas",
+    "harom", "ahmoq", "tentak", "noinsof", "buzuq",
+    "qodir", "sho'rlik", "it bolasi", "eshak", "la'nat",
+    # Rus tilida keng tarqalgan
+    "бля", "блять", "пизд", "хуй", "еба", "ёба",
+    "сука", "пиздец", "залуп", "мудак", "долбо",
+    # Inglizcha
+    "fuck", "shit", "bitch", "asshole", "cunt", "dick",
+    "bastard", "motherfucker",
+]
+
+def contains_bad_word(text: str) -> bool:
+    t = text.lower()
+    return any(bw in t for bw in BAD_WORDS)
 
 
 # ═══════════════════════════════════════════════════════
@@ -134,14 +161,14 @@ def init_db():
         chat_id INTEGER PRIMARY KEY, title TEXT, username TEXT,
         member_count INTEGER DEFAULT 0, added_date TEXT,
         is_banned INTEGER DEFAULT 0, ban_reason TEXT DEFAULT '',
-        invite_active INTEGER DEFAULT 1)""")
+        invite_active INTEGER DEFAULT 1,
+        livestream_active INTEGER DEFAULT 0)""")
     c.execute("""CREATE TABLE IF NOT EXISTS messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER,
         user_id INTEGER, username TEXT, date TEXT)""")
     c.execute("""CREATE TABLE IF NOT EXISTS settings (
         key TEXT PRIMARY KEY,
         value TEXT DEFAULT '')""")
-    # ══ YANGI v8: Foydalanuvchi taklif hisoblagichi ══
     c.execute("""CREATE TABLE IF NOT EXISTS user_invites (
         chat_id INTEGER,
         user_id INTEGER,
@@ -150,6 +177,11 @@ def init_db():
     # Default sozlamalar
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('channel_username', '')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('channel_link', '')")
+    # Ustun yo'q bo'lsa qo'shish (eski DB bilan moslik)
+    try:
+        c.execute("ALTER TABLE groups ADD COLUMN livestream_active INTEGER DEFAULT 0")
+    except Exception:
+        pass
     conn.commit(); conn.close()
 
 def get_db():
@@ -174,9 +206,20 @@ def save_channel_settings(username: str, link: str):
 def clear_channel_settings():
     save_channel_settings("", "")
 
-# ══ YANGI v8: Taklif hisoblash funksiyalari ══
+# ── Jonli efir holati ──
+def set_livestream(chat_id: int, active: bool):
+    conn = get_db(); c = conn.cursor()
+    c.execute("UPDATE groups SET livestream_active=? WHERE chat_id=?", (1 if active else 0, chat_id))
+    conn.commit(); conn.close()
+
+def get_livestream_status(chat_id: int) -> bool:
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT livestream_active FROM groups WHERE chat_id=?", (chat_id,))
+    row = c.fetchone(); conn.close()
+    return bool(row and row[0])
+
+# ── Taklif hisoblash ──
 def get_user_invite_count(chat_id: int, user_id: int) -> int:
-    """Berilgan guruhda foydalanuvchi nechta do'st taklif qilganini qaytaradi."""
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT invite_count FROM user_invites WHERE chat_id=? AND user_id=?",
               (chat_id, user_id))
@@ -184,7 +227,6 @@ def get_user_invite_count(chat_id: int, user_id: int) -> int:
     return row[0] if row else 0
 
 def increment_user_invite(chat_id: int, user_id: int) -> int:
-    """Foydalanuvchining taklif sonini 1 ga oshiradi, yangi qiymatni qaytaradi."""
     conn = get_db(); c = conn.cursor()
     c.execute("""INSERT INTO user_invites (chat_id, user_id, invite_count)
                  VALUES (?, ?, 1)
@@ -198,7 +240,6 @@ def increment_user_invite(chat_id: int, user_id: int) -> int:
     conn.close()
     return new_count
 
-# ─── Qolgan DB funksiyalar ─────────────────────────────
 def add_group(chat_id, title, username):
     conn = get_db(); c = conn.cursor()
     c.execute("""INSERT OR IGNORE INTO groups
@@ -262,12 +303,14 @@ def is_admin(uid):
 
 def admin_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Statistika",  callback_data="stats"),
-         InlineKeyboardButton("👥 Guruhlar",    callback_data="groups_0")],
-        [InlineKeyboardButton("🚫 Taqiqlangan", callback_data="banned"),
-         InlineKeyboardButton("⚙️ Sozlamalar",  callback_data="settings")],
-        [InlineKeyboardButton("📢 Broadcast",   callback_data="broadcast_ask")],
+        [InlineKeyboardButton("📊 Statistika",    callback_data="stats"),
+         InlineKeyboardButton("👥 Guruhlar",      callback_data="groups_0")],
+        [InlineKeyboardButton("🚫 Taqiqlangan",   callback_data="banned"),
+         InlineKeyboardButton("⚙️ Sozlamalar",    callback_data="settings")],
+        [InlineKeyboardButton("📢 Broadcast",     callback_data="broadcast_ask")],
         [InlineKeyboardButton("🔔 Kanal sozlash", callback_data="channel_manage")],
+        [InlineKeyboardButton("📡 Jonli efir",    callback_data="livestream_menu")],
+        [InlineKeyboardButton("👑 Admin boshqaruv", callback_data="admin_manage")],
     ])
 
 def user_kb(bot_username):
@@ -282,32 +325,22 @@ def user_kb(bot_username):
 #   🔔 OBUNA TEKSHIRUVI
 # ═══════════════════════════════════════════════════════
 async def check_subscription(bot, user_id: int) -> bool:
-    """True = obuna bor yoki kanal o'rnatilmagan | False = obuna yo'q"""
     ch_username, _ = get_channel_settings()
     if not ch_username:
         return True
-
     channel_id = ch_username if ch_username.startswith("@") else "@" + ch_username
     try:
         member = await bot.get_chat_member(chat_id=channel_id, user_id=user_id)
-        status = member.status
-        logger.info(f"Obuna tekshiruv: user={user_id} status={status} channel={channel_id}")
-        if status in ("kicked", "left"):
-            return False
-        return True
+        return member.status not in ("kicked", "left")
     except TelegramError as e:
         err_msg = str(e).lower()
         logger.error(f"Obuna tekshirishda xato user={user_id}: {e}")
         if "user not found" in err_msg:
             return False
-        if "chat not found" in err_msg:
-            logger.warning(f"Kanal topilmadi: {channel_id}")
-            return True
         return True
 
 
 async def send_not_subscribed_message(query, user, ch_username: str, ch_link: str, gid: int):
-    """Taklif tugmasi uchun — obuna yo'q xabari."""
     await query.answer("❌ Avval kanalga obuna bo'ling!", show_alert=True)
     try:
         await query.message.reply_text(
@@ -331,34 +364,19 @@ async def send_not_subscribed_message(query, user, ch_username: str, ch_link: st
 #   🚫 GURUHDA YOZISH — OBUNA + 2 DO'ST TEKSHIRUVI
 # ═══════════════════════════════════════════════════════
 async def check_write_permission(update: Update, context: ContextTypes.DEFAULT_TYPE) -> bool:
-    """
-    Foydalanuvchi guruhda yoza olishini tekshiradi.
-    True  = yozishga ruxsat
-    False = bloklandi (xabar o'chirildi, ogoh qilindi)
-
-    Tartib:
-      1. Kanal o'rnatilgan bo'lsa → obuna bormi?
-      2. Obuna bor bo'lsa → REQUIRED_INVITES ta do'st taklif qilganmi?
-    """
     msg  = update.message
     user = update.effective_user
     chat = update.effective_chat
 
-    # Bot adminlari tekshiruvdan o'tkazilmaydi
     if is_admin(user.id):
         return True
 
-    # ── QADAM 1: Kanalga obuna tekshirish ──────────────────────
     ch_username, ch_link = get_channel_settings()
     if ch_username:
         subscribed = await check_subscription(context.bot, user.id)
         if not subscribed:
-            # Xabarni o'chirishga harakat
-            try:
-                await msg.delete()
-            except Exception:
-                pass
-
+            try: await msg.delete()
+            except Exception: pass
             user_mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
             try:
                 sent = await context.bot.send_message(
@@ -366,9 +384,7 @@ async def check_write_permission(update: Update, context: ContextTypes.DEFAULT_T
                     text=(
                         f"🔔 {user_mention}, guruhda yozish uchun\n"
                         f"avval kanalga <b>obuna bo'ling!</b>\n\n"
-                        f"📢 Kanal: <b>{ch_username}</b>\n\n"
-                        f"1️⃣ Kanalga o'ting → Obuna bo'ling\n"
-                        f"2️⃣ «✅ Obuna bo'ldim» tugmasini bosing"
+                        f"📢 Kanal: <b>{ch_username}</b>"
                     ),
                     parse_mode=ParseMode.HTML,
                     reply_markup=InlineKeyboardMarkup([
@@ -376,7 +392,6 @@ async def check_write_permission(update: Update, context: ContextTypes.DEFAULT_T
                         [InlineKeyboardButton("✅ Obuna bo'ldim, tekshir!", callback_data=f"check_write_sub_{chat.id}")],
                     ])
                 )
-                # 60 soniyadan keyin ogoh xabarini o'chirish
                 asyncio.get_event_loop().call_later(
                     60, asyncio.ensure_future,
                     _delete_message_safe(context.bot, chat.id, sent.message_id)
@@ -385,16 +400,11 @@ async def check_write_permission(update: Update, context: ContextTypes.DEFAULT_T
                 logger.error(f"Obuna ogoh xabarida xato: {e}")
             return False
 
-    # ── QADAM 2: 2 ta do'st taklif qilish tekshirish ───────────
     invite_count = get_user_invite_count(chat.id, user.id)
     if invite_count < REQUIRED_INVITES:
         remaining = REQUIRED_INVITES - invite_count
-        # Xabarni o'chirishga harakat
-        try:
-            await msg.delete()
-        except Exception:
-            pass
-
+        try: await msg.delete()
+        except Exception: pass
         user_mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
         try:
             sent = await context.bot.send_message(
@@ -403,8 +413,7 @@ async def check_write_permission(update: Update, context: ContextTypes.DEFAULT_T
                     f"👥 {user_mention}, guruhda yozish uchun\n"
                     f"<b>{remaining} ta do'st</b> taklif qiling!\n\n"
                     f"📊 Sizning holatIngiz: "
-                    f"<b>{invite_count}/{REQUIRED_INVITES}</b> ✅\n\n"
-                    f"👇 Tugmani bosib do'stlaringizni taklif qiling:"
+                    f"<b>{invite_count}/{REQUIRED_INVITES}</b> ✅"
                 ),
                 parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup([
@@ -419,11 +428,10 @@ async def check_write_permission(update: Update, context: ContextTypes.DEFAULT_T
             logger.error(f"Taklif ogoh xabarida xato: {e}")
         return False
 
-    return True  # Barcha shartlar bajarildi ✅
+    return True
 
 
 async def _delete_message_safe(bot, chat_id: int, message_id: int):
-    """Xabarni xatosiz o'chirish."""
     try:
         await bot.delete_message(chat_id=chat_id, message_id=message_id)
     except Exception:
@@ -431,27 +439,57 @@ async def _delete_message_safe(bot, chat_id: int, message_id: int):
 
 
 # ═══════════════════════════════════════════════════════
-#   👥 TAKLIF TUGMASI — OBUNA TEKSHIRUV BILAN
+#   🔇 SO'KINISH — AVTOMATIK MUTE
+# ═══════════════════════════════════════════════════════
+async def mute_user_for_swearing(bot, chat_id: int, user, message_id: int):
+    """So'kingan foydalanuvchini MUTE_DURATION daqiqaga sukut qiladi."""
+    until = datetime.now() + timedelta(minutes=MUTE_DURATION)
+    user_mention = f'<a href="tg://user?id={user.id}">{user.first_name}</a>'
+    try:
+        await bot.delete_message(chat_id=chat_id, message_id=message_id)
+    except Exception:
+        pass
+    try:
+        await bot.restrict_chat_member(
+            chat_id=chat_id,
+            user_id=user.id,
+            permissions=ChatPermissions(can_send_messages=False),
+            until_date=until
+        )
+        await bot.send_message(
+            chat_id=chat_id,
+            text=(
+                f"🔇 {user_mention} <b>{MUTE_DURATION} daqiqaga sukut qilindi!</b>\n\n"
+                f"❌ Sabab: haqoratli so'z ishlatish\n"
+                f"⏰ Mute tugaydi: <b>{until.strftime('%H:%M')}</b>\n\n"
+                f"⚠️ Guruh qoidalariga rioya qiling!"
+            ),
+            parse_mode=ParseMode.HTML
+        )
+        logger.info(f"🔇 Mute: {user.first_name} ({user.id}) chat={chat_id}")
+    except TelegramError as e:
+        logger.error(f"Mute xatosi: {e}")
+
+
+# ═══════════════════════════════════════════════════════
+#   👥 TAKLIF TUGMASI
 # ═══════════════════════════════════════════════════════
 async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: int):
     user = query.from_user
     ch_username, ch_link = get_channel_settings()
 
-    # Obuna tekshiruvi
     if ch_username:
         subscribed = await check_subscription(context.bot, user.id)
         if not subscribed:
             await send_not_subscribed_message(query, user, ch_username, ch_link, gid)
             return
 
-    # Guruh nomini olish
     try:
         chat = await context.bot.get_chat(gid)
         group_title = chat.title or "Guruh"
     except TelegramError:
         group_title = "Guruh"
 
-    # Invite link yaratish
     try:
         link_obj = await context.bot.create_chat_invite_link(
             chat_id=gid,
@@ -460,13 +498,9 @@ async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: i
         )
         link_str = link_obj.invite_link
         invite_links_db[link_str] = (user.id, user.first_name, gid)
-        logger.info(f"✅ Invite link: {user.first_name} → {link_str}")
     except TelegramError as e:
         logger.error(f"Invite link xato: {e}")
-        await query.message.reply_text(
-            "❌ Havola yaratishda xato!\n"
-            "Bot guruhda ADMIN ekanligini va 'Invite Users' ruxsati borligini tekshiring."
-        )
+        await query.message.reply_text("❌ Havola yaratishda xato! Bot guruhda ADMIN ekanligini tekshiring.")
         return
 
     try:
@@ -488,11 +522,8 @@ async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: i
         else f"📊 Holat: <b>{invite_count}/{REQUIRED_INVITES}</b> — yana <b>{remaining} ta</b> kerak"
     )
 
-    share_text = (
-        f"Salom! 👋 \"{group_title}\" guruhiga taklif qilmoqchiman!\n"
-        "Qo'shiling, ajoyib guruh! 💪🔥"
-    )
-    share_url = (
+    share_text = f"Salom! 👋 \"{group_title}\" guruhiga taklif qilmoqchiman! Qo'shiling! 💪"
+    share_url  = (
         f"https://t.me/share/url?"
         f"url={urllib.parse.quote(link_str)}"
         f"&text={urllib.parse.quote(share_text)}"
@@ -503,8 +534,8 @@ async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: i
         f"📌 Guruh: <b>{group_title}</b>\n\n"
         f"{status_line}\n\n"
         f"👇 <b>Ikki usuldan birini tanlang:</b>\n\n"
-        f"1️⃣ <b>Kontaktdan tanlash</b> — do'stlaringizni belgilab qo'shing\n\n"
-        f"2️⃣ <b>Havola ulashish</b> — linkni yuboring\n\n"
+        f"1️⃣ <b>Kontaktdan tanlash</b>\n"
+        f"2️⃣ <b>Havola ulashish</b>\n\n"
         f"🏆 Kim qo'shilsa, guruhda <b>siz maqtalasiz!</b>",
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup([
@@ -515,12 +546,11 @@ async def handle_invite_button(query, context: ContextTypes.DEFAULT_TYPE, gid: i
 
 
 # ═══════════════════════════════════════════════════════
-#   🎉 YANGI A'ZO TRACKING — TAKLIF HISOBLAGICHI BILAN
+#   🎉 YANGI A'ZO TRACKING
 # ═══════════════════════════════════════════════════════
 async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     result = update.chat_member
-    if not result:
-        return
+    if not result: return
     old_status = result.old_chat_member.status
     new_status  = result.new_chat_member.status
     if old_status in (ChatMember.LEFT, ChatMember.BANNED) and \
@@ -532,7 +562,6 @@ async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_
             link_str = getattr(invite_link_obj, "invite_link", None)
             if link_str and link_str in invite_links_db:
                 inviter_id, inviter_name, _ = invite_links_db[link_str]
-                # ── Taklif sonini oshirish ──
                 new_count = increment_user_invite(chat_id, inviter_id)
                 await _send_praise(context, chat_id, inviter_id, inviter_name, new_member, new_count)
                 return
@@ -545,18 +574,13 @@ async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_
 async def _send_praise(context, chat_id, inviter_id, inviter_name, new_member, invite_count: int = 0):
     inviter_m = f'<a href="tg://user?id={inviter_id}">{inviter_name}</a>'
     new_m     = f'<a href="tg://user?id={new_member.id}">{new_member.first_name}</a>'
-
     maqtovlar = [
-        f"🎉 <b>BARAKALLA!</b> {inviter_m} birodar {new_m}ni guruhga qo'shdi! 🤝\nGuruh kengaymoqda! 💪🌟",
-        f"👏 <b>ZO'R!</b> {inviter_m} guruhimizga {new_m}ni olib keldi!\nBarakalla! 🔥",
-        f"🌟 {inviter_m} — <b>GURUH QAHRAMONI!</b>\n{new_m}ni qo'shdi! 💪🎊",
-        f"✨ <b>RAHMAT</b> {inviter_m}!\nYangi a'zo {new_m} xush kelibsiz! 🎉",
-        f"🏆 {inviter_m} guruhga yangi kuch qo'shdi!\n{new_m} xush kelibsiz! 🎊💫",
-        f"💪 <b>AJOYIB!</b> {inviter_m} bizga {new_m}ni taklif qildi!\nBarakalla aka! 🌟🔥",
-        f"⭐ {inviter_m} SUPERSTAR!\n{new_m}ni olib keldi! Barakalla! 👏🌟",
+        f"🎉 <b>BARAKALLA!</b> {inviter_m} birodar {new_m}ni guruhga qo'shdi! 🤝",
+        f"👏 <b>ZO'R!</b> {inviter_m} guruhimizga {new_m}ni olib keldi! 🔥",
+        f"🌟 {inviter_m} — <b>GURUH QAHRAMONI!</b> {new_m}ni qo'shdi! 💪",
+        f"✨ <b>RAHMAT</b> {inviter_m}! Yangi a'zo {new_m} xush kelibsiz! 🎉",
+        f"🏆 {inviter_m} guruhga yangi kuch qo'shdi! {new_m} xush kelibsiz! 🎊",
     ]
-
-    # Taklif hisobini va ruxsat holatini ham ko'rsatamiz
     if invite_count >= REQUIRED_INVITES:
         unlock_msg = f"\n\n🔓 {inviter_m} endi guruhda <b>erkin yoza oladi!</b> ✅"
     else:
@@ -565,7 +589,6 @@ async def _send_praise(context, chat_id, inviter_id, inviter_name, new_member, i
             f"\n\n📊 {inviter_m} holati: <b>{invite_count}/{REQUIRED_INVITES}</b>"
             f" — yana <b>{remaining} ta</b> do'st kerak!"
         )
-
     text = random.choice(maqtovlar) + unlock_msg
     try:
         await context.bot.send_message(chat_id=chat_id, text=text, parse_mode=ParseMode.HTML)
@@ -596,7 +619,6 @@ async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
                 conn = get_db(); c = conn.cursor()
                 c.execute("UPDATE groups SET invite_active=0 WHERE chat_id=?", (gid,))
                 conn.commit(); conn.close()
-                logger.warning(f"⚠️ Guruhdan chiqarildi: {gid}")
             else:
                 logger.error(f"Taklif xabari xato ({gid}): {e}")
         except Exception as e:
@@ -647,14 +669,12 @@ async def cmd_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     r = update.my_chat_member
-    if not r:
-        return
+    if not r: return
     chat   = r.chat
     status = r.new_chat_member.status
     if chat.type in ("group", "supergroup"):
         if status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
             add_group(chat.id, chat.title, chat.username)
-            logger.info(f"✅ Yangi guruh: {chat.title} ({chat.id})")
         elif status in (ChatMember.LEFT, ChatMember.BANNED):
             conn = get_db(); c = conn.cursor()
             c.execute("UPDATE groups SET invite_active=0 WHERE chat_id=?", (chat.id,))
@@ -662,15 +682,12 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
     for member in update.message.new_chat_members:
-        if member.is_bot:
-            continue
+        if member.is_bot: continue
         mn = f'<a href="tg://user?id={member.id}">{member.first_name}</a>'
         ch_username, ch_link = get_channel_settings()
         invite_count = get_user_invite_count(update.effective_chat.id, member.id)
         remaining    = max(0, REQUIRED_INVITES - invite_count)
-
         if ch_username or remaining > 0:
-            # Yangi a'zoga qoidalarni tushuntirish
             steps = []
             if ch_username:
                 steps.append(f"1️⃣ <b>Kanalga obuna bo'ling:</b> {ch_username}")
@@ -698,17 +715,15 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
         else:
             greets = [
-                f"🎉 Xush kelibsiz {mn}! Guruhimizga xush kelibsiz! 😊🌟",
+                f"🎉 Xush kelibsiz {mn}! 😊🌟",
                 f"👋 Salom {mn}! Guruhimizga marhamat! 🎊",
-                f"✨ {mn} bilan guruh yanada jonlandi! 🎉💫",
-                f"💫 Xush kelibsiz {mn}! Savollaringiz bo'lsa so'rang! 😊",
-                f"🌟 {mn} guruhimizga qo'shildi! Birga kuchli bo'lamiz! 💪",
+                f"✨ {mn} bilan guruh yanada jonlandi! 💫",
             ]
             await update.message.reply_text(random.choice(greets), parse_mode=ParseMode.HTML)
 
 
 # ═══════════════════════════════════════════════════════
-#   💬 GURUH XABARLARI — ASOSIY FILTR (v8 yangilik)
+#   💬 GURUH XABARLARI
 # ═══════════════════════════════════════════════════════
 async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     chat = update.effective_chat
@@ -720,14 +735,19 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     add_group(chat.id, chat.title, chat.username)
 
-    # ── YANGI v8: Yozishga ruxsat tekshiruvi ──────────────────
+    text = msg.text or ""
+
+    # ── SO'KINISH TEKSHIRUVI (admin bo'lmasa) ──
+    if not is_admin(user.id) and text and contains_bad_word(text):
+        await mute_user_for_swearing(context.bot, chat.id, user, msg.message_id)
+        return
+
+    # ── YOZISHGA RUXSAT TEKSHIRUVI ──
     allowed = await check_write_permission(update, context)
     if not allowed:
-        return   # Xabar o'chirildi, ogoh berildi
-    # ──────────────────────────────────────────────────────────
+        return
 
     log_message(chat.id, user.id, user.username or user.first_name)
-    text = msg.text or ""
     if not text:
         return
     reply = get_auto_reply(text, user.first_name)
@@ -735,6 +755,9 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
         await msg.reply_text(reply, parse_mode=ParseMode.HTML)
 
 
+# ═══════════════════════════════════════════════════════
+#   ✉️ ADMIN XABARLAR (private)
+# ═══════════════════════════════════════════════════════
 async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_admin(user.id) or update.effective_chat.type != "private":
@@ -750,25 +773,20 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         save_channel_settings(raw, link)
         context.user_data.pop("action", None)
         await update.message.reply_text(
-            f"✅ <b>Kanal o'rnatildi!</b>\n\n"
-            f"📢 Username: <b>{raw}</b>\n"
-            f"🔗 Havola: {link}\n\n"
+            f"✅ <b>Kanal o'rnatildi!</b>\n\n📢 Username: <b>{raw}</b>\n🔗 {link}\n\n"
             f"⚠️ Botni shu kanalga <b>Admin</b> qiling!",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[
                 InlineKeyboardButton("🔙 Kanal menyu", callback_data="channel_manage")
             ]])
         )
-        return
 
-    if action == "ban_id":
+    elif action == "ban_id":
         try:
             cid = int(text.strip())
             ban_group(cid, "Admin taqiqladi")
             context.user_data.pop("action", None)
-            await update.message.reply_text(
-                f"✅ Guruh <code>{cid}</code> taqiqlandi!",
-                parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+            await update.message.reply_text(f"✅ Guruh <code>{cid}</code> taqiqlandi!", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
         except ValueError:
             await update.message.reply_text("❌ Noto'g'ri ID!")
 
@@ -777,9 +795,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             cid = int(text.strip())
             unban_group(cid)
             context.user_data.pop("action", None)
-            await update.message.reply_text(
-                f"✅ Guruh <code>{cid}</code> tiklandi!",
-                parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+            await update.message.reply_text(f"✅ Guruh <code>{cid}</code> tiklandi!", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
         except ValueError:
             await update.message.reply_text("❌ Noto'g'ri ID!")
 
@@ -793,9 +809,111 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             except Exception:
                 failed += 1
         context.user_data.pop("action", None)
+        await update.message.reply_text(f"📢 <b>Yuborildi!</b>\n✅ {sent} ta\n❌ {failed} ta", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+
+    elif action == "livestream_set_chat":
+        # Admin jonli efirni boshqarmoqchi bo'lgan guruh ID sini kiritdi
+        raw = text.strip()
+        try:
+            cid = int(raw)
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID! Qayta kiriting:")
+            return
+        context.user_data["ls_chat_id"] = cid
+        context.user_data.pop("action", None)
+        status = get_livestream_status(cid)
+        status_text = "✅ YOQIQ" if status else "❌ O'CHIQ"
         await update.message.reply_text(
-            f"📢 <b>Yuborildi!</b>\n✅ {sent} ta\n❌ {failed} ta",
-            parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+            f"📡 <b>Jonli Efir — Guruh:</b> <code>{cid}</code>\n"
+            f"Hozirgi holat: <b>{status_text}</b>\n\n"
+            f"Quyidagidan birini tanlang:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("▶️ Yoqish",   callback_data=f"ls_on_{cid}")],
+                [InlineKeyboardButton("⏹ O'chirish", callback_data=f"ls_off_{cid}")],
+                [InlineKeyboardButton("🔙 Orqaga",   callback_data="livestream_menu")],
+            ])
+        )
+
+    elif action == "promote_user":
+        # Admin qo'shmoqchi bo'lgan foydalanuvchi ID sini kiritdi
+        raw = text.strip()
+        try:
+            uid = int(raw)
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri foydalanuvchi ID! Qayta kiriting:")
+            return
+        chat_id = context.user_data.get("admin_chat_id")
+        if not chat_id:
+            await update.message.reply_text("❌ Avval guruh ID sini kiriting. /panel → Admin boshqaruv")
+            context.user_data.pop("action", None)
+            return
+        try:
+            await context.bot.promote_chat_member(
+                chat_id=chat_id,
+                user_id=uid,
+                can_manage_chat=True,
+                can_delete_messages=True,
+                can_restrict_members=True,
+                can_invite_users=True,
+                can_pin_messages=True,
+            )
+            context.user_data.pop("action", None)
+            await update.message.reply_text(
+                f"✅ Foydalanuvchi <code>{uid}</code> guruh <code>{chat_id}</code>da <b>ADMIN</b> qilindi!",
+                parse_mode=ParseMode.HTML, reply_markup=admin_kb()
+            )
+        except TelegramError as e:
+            await update.message.reply_text(f"❌ Xato: {e}\n\nBot o'zi ham admin bo'lishi kerak!")
+
+    elif action == "demote_user":
+        raw = text.strip()
+        try:
+            uid = int(raw)
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri foydalanuvchi ID! Qayta kiriting:")
+            return
+        chat_id = context.user_data.get("admin_chat_id")
+        if not chat_id:
+            await update.message.reply_text("❌ Avval guruh ID sini kiriting.")
+            context.user_data.pop("action", None)
+            return
+        try:
+            await context.bot.promote_chat_member(
+                chat_id=chat_id,
+                user_id=uid,
+                can_manage_chat=False,
+                can_delete_messages=False,
+                can_restrict_members=False,
+                can_invite_users=False,
+                can_pin_messages=False,
+            )
+            context.user_data.pop("action", None)
+            await update.message.reply_text(
+                f"✅ Foydalanuvchi <code>{uid}</code> guruh <code>{chat_id}</code>dan <b>ADMIN</b> olib tashlandi!",
+                parse_mode=ParseMode.HTML, reply_markup=admin_kb()
+            )
+        except TelegramError as e:
+            await update.message.reply_text(f"❌ Xato: {e}")
+
+    elif action == "admin_chat_id":
+        raw = text.strip()
+        try:
+            cid = int(raw)
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri guruh ID! Qayta kiriting:")
+            return
+        context.user_data["admin_chat_id"] = cid
+        context.user_data.pop("action", None)
+        await update.message.reply_text(
+            f"✅ Guruh tanlandi: <code>{cid}</code>\n\nIlo: Nima qilmoqchisiz?",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Admin qo'shish",   callback_data="ask_promote")],
+                [InlineKeyboardButton("➖ Admin o'chirish",  callback_data="ask_demote")],
+                [InlineKeyboardButton("🔙 Orqaga",           callback_data="admin_manage")],
+            ])
+        )
 
 
 # ═══════════════════════════════════════════════════════
@@ -808,12 +926,13 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     uid      = q.from_user.id
     bot_info = await context.bot.get_me()
 
+    # ── Taklif tugmasi ──
     if d.startswith("invite_"):
         gid = int(d.split("_")[1])
         await handle_invite_button(q, context, gid)
         return
 
-    # ── Taklif tugmasidan OBUNA tekshirish ──
+    # ── Obuna tekshirish (taklif uchun) ──
     if d.startswith("check_sub_"):
         gid = int(d.split("_")[2])
         user = q.from_user
@@ -824,35 +943,63 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await handle_invite_button(q, context, gid)
         else:
             await q.answer("❌ Siz hali obuna bo'lmadingiz!", show_alert=True)
-            try:
-                await q.message.reply_text(
-                    f"❌ <b>{user.first_name}, obuna topilmadi!</b>\n\n"
-                    f"📢 Avval <b>{ch_username}</b> kanaliga obuna bo'ling,\n"
-                    f"so'ng <b>«Tekshirish»</b> tugmasini bosing.",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("📢 Kanalga o'tish", url=ch_link)],
-                        [InlineKeyboardButton("✅ Tekshirish", callback_data=f"check_sub_{gid}")],
-                    ])
-                )
-            except Exception:
-                pass
         return
 
-    # ── GURUHDA YOZISH uchun obuna tekshirish (v8 yangi) ──
+    # ── Guruhda yozish uchun obuna tekshirish ──
     if d.startswith("check_write_sub_"):
         chat_id = int(d.split("_")[3])
         user = q.from_user
-        ch_username, ch_link = get_channel_settings()
         subscribed = await check_subscription(context.bot, user.id)
         if subscribed:
             await q.answer("✅ Obuna tasdiqlandi! Endi yoza olasiz.", show_alert=True)
-            try:
-                await q.message.delete()
-            except Exception:
-                pass
+            try: await q.message.delete()
+            except Exception: pass
         else:
             await q.answer("❌ Hali obuna bo'lmadingiz!", show_alert=True)
+        return
+
+    # ── Jonli efir yoqish/o'chirish (callback) ──
+    if d.startswith("ls_on_"):
+        cid = int(d.split("_")[2])
+        set_livestream(cid, True)
+        await q.edit_message_text(
+            f"📡 <b>Jonli efir YOQILDI!</b>\n\nGuruh: <code>{cid}</code>\n\n"
+            f"✅ Guruhda jonli efir boshqaruvi faol.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("⏹ O'chirish",  callback_data=f"ls_off_{cid}")],
+                [InlineKeyboardButton("🔙 Orqaga",    callback_data="livestream_menu")],
+            ])
+        )
+        try:
+            await context.bot.send_message(
+                chat_id=cid,
+                text="📡 <b>Jonli efir rejimi yoqildi!</b>\n\nAdmin xabarnomalar faol. 🔴",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
+        return
+
+    if d.startswith("ls_off_"):
+        cid = int(d.split("_")[2])
+        set_livestream(cid, False)
+        await q.edit_message_text(
+            f"📡 <b>Jonli efir O'CHIRILDI!</b>\n\nGuruh: <code>{cid}</code>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("▶️ Yoqish",    callback_data=f"ls_on_{cid}")],
+                [InlineKeyboardButton("🔙 Orqaga",    callback_data="livestream_menu")],
+            ])
+        )
+        try:
+            await context.bot.send_message(
+                chat_id=cid,
+                text="📡 <b>Jonli efir rejimi o'chirildi.</b>",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
         return
 
     if d == "contact_admin":
@@ -878,8 +1025,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "2️⃣ Ro'yxatdan guruhingizni tanlang\n"
             "3️⃣ Tasdiqlang\n"
             "4️⃣ Guruh sozlamalari → Adminlar → Botni toping\n"
-            "5️⃣ <b>Barcha ruxsatlarni bering</b> (Delete Messages, Invite Users)\n\n"
-            "✅ Tayyor! Bot avtomatik ishlaydi!",
+            "5️⃣ <b>Barcha ruxsatlarni bering</b>\n\n"
+            "✅ Tayyor!",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("➕ Guruhga qo'shish",
@@ -888,6 +1035,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]))
         return
 
+    # ── Adminlik tekshiruvi ──
     if not is_admin(uid):
         await q.answer("❌ Ruxsat yo'q!", show_alert=True)
         return
@@ -898,11 +1046,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         status_text = (
             f"✅ <b>Faol kanal:</b> {ch_username}\n🔗 {ch_link}"
             if ch_username else
-            "❌ <b>Kanal o'rnatilmagan</b>\nHozircha obuna tekshiruvi o'chiq."
+            "❌ <b>Kanal o'rnatilmagan</b>"
         )
         await q.edit_message_text(
-            f"🔔 <b>Kanal Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"{status_text}\n\n👇 Amalni tanlang:",
+            f"🔔 <b>Kanal Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n{status_text}\n\n👇 Amalni tanlang:",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("➕ Kanal o'rnatish / o'zgartirish", callback_data="channel_set")],
@@ -915,15 +1062,10 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if d == "channel_set":
         context.user_data["action"] = "set_channel"
         await q.edit_message_text(
-            "📢 <b>Kanal o'rnatish</b>\n\n"
-            "Kanal username'ini yuboring:\n\n"
-            "<i>Misol: @mening_kanalim</i>\n"
-            "<i>yoki: mening_kanalim (@ avtomatik qo'shiladi)</i>\n\n"
-            "⚠️ Botni shu kanalga <b>Admin</b> qilishni unutmang!",
+            "📢 <b>Kanal o'rnatish</b>\n\nKanal username'ini yuboring:\n\n"
+            "<i>Misol: @mening_kanalim</i>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 Bekor", callback_data="channel_manage")
-            ]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="channel_manage")]])
         )
         return
 
@@ -939,6 +1081,117 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # ══ JONLI EFIR MENYU ══
+    if d == "livestream_menu":
+        groups = get_all_groups()
+        active_ls = [(g[0], g[1]) for g in groups if g[5] == 0]  # faqat ban bo'lmaganlar
+        text = "📡 <b>Jonli Efir Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+        text += "Quyidagi guruhlardan birida jonli efirni boshqaring:\n\n"
+        rows = []
+        for cid, title in active_ls[:8]:
+            ls_on = get_livestream_status(cid)
+            icon  = "🔴" if ls_on else "⚫"
+            rows.append([InlineKeyboardButton(
+                f"{icon} {title[:25]}",
+                callback_data=f"ls_toggle_{cid}"
+            )])
+        rows.append([InlineKeyboardButton("📝 ID kiritish", callback_data="ls_enter_id")])
+        rows.append([InlineKeyboardButton("🔙 Orqaga",      callback_data="back_admin")])
+        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        return
+
+    if d.startswith("ls_toggle_"):
+        cid = int(d.split("_")[2])
+        current = get_livestream_status(cid)
+        new_status = not current
+        set_livestream(cid, new_status)
+        icon = "🔴 YOQILDI" if new_status else "⚫ O'CHIRILDI"
+        await q.answer(f"📡 Jonli efir {icon}!", show_alert=True)
+        try:
+            await context.bot.send_message(
+                chat_id=cid,
+                text=f"📡 <b>Jonli efir {icon}!</b>",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
+        # Menyuni yangilash
+        groups = get_all_groups()
+        active_ls = [(g[0], g[1]) for g in groups if g[5] == 0]
+        rows = []
+        for gcid, title in active_ls[:8]:
+            ls_on = get_livestream_status(gcid)
+            icon2 = "🔴" if ls_on else "⚫"
+            rows.append([InlineKeyboardButton(f"{icon2} {title[:25]}", callback_data=f"ls_toggle_{gcid}")])
+        rows.append([InlineKeyboardButton("📝 ID kiritish", callback_data="ls_enter_id")])
+        rows.append([InlineKeyboardButton("🔙 Orqaga",      callback_data="back_admin")])
+        try:
+            await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(rows))
+        except Exception:
+            pass
+        return
+
+    if d == "ls_enter_id":
+        context.user_data["action"] = "livestream_set_chat"
+        await q.edit_message_text(
+            "📡 <b>Jonli Efir — Guruh ID kiriting</b>\n\n"
+            "Guruh ID sini yuboring:\n<i>Misol: -1001234567890</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="livestream_menu")]])
+        )
+        return
+
+    # ══ ADMIN BOSHQARUV ══
+    if d == "admin_manage":
+        await q.edit_message_text(
+            "👑 <b>Admin Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Bot orqali guruhga admin qo'shish yoki o'chirish.\n\n"
+            "⚠️ Bot o'zi guruhda <b>Admin</b> bo'lishi kerak!\n"
+            "Ruxsat: <b>Promote Members</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📝 Guruh ID kiriting",  callback_data="ask_admin_chat")],
+                [InlineKeyboardButton("🔙 Orqaga",             callback_data="back_admin")],
+            ])
+        )
+        return
+
+    if d == "ask_admin_chat":
+        context.user_data["action"] = "admin_chat_id"
+        await q.edit_message_text(
+            "👑 <b>Guruh ID kiriting</b>\n\n"
+            "Admin qo'shmoqchi/o'chirmoqchi bo'lgan guruh ID sini yuboring:\n"
+            "<i>Misol: -1001234567890</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]])
+        )
+        return
+
+    if d == "ask_promote":
+        context.user_data["action"] = "promote_user"
+        chat_id = context.user_data.get("admin_chat_id", "?")
+        await q.edit_message_text(
+            f"➕ <b>Admin qo'shish</b>\n\nGuruh: <code>{chat_id}</code>\n\n"
+            "Admin qilmoqchi bo'lgan foydalanuvchi <b>ID</b>sini yuboring:\n"
+            "<i>Misol: 123456789</i>\n\n"
+            "💡 Foydalanuvchi ID ni bilish uchun @userinfobot ga yozing.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]])
+        )
+        return
+
+    if d == "ask_demote":
+        context.user_data["action"] = "demote_user"
+        chat_id = context.user_data.get("admin_chat_id", "?")
+        await q.edit_message_text(
+            f"➖ <b>Admin o'chirish</b>\n\nGuruh: <code>{chat_id}</code>\n\n"
+            "Adminlikdan o'chirmoqchi bo'lgan foydalanuvchi <b>ID</b>sini yuboring:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]])
+        )
+        return
+
+    # ══ STATISTIKA ══
     if d == "stats":
         active, banned, total, today = get_stats()
         groups = get_active_groups()
@@ -965,6 +1218,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"💬 Kalit so'zlar:     <b>{len(RESPONSES)}</b>\n\n"
             f"📢 Taklif xabari:     <b>har {INVITE_INTERVAL} sek</b>\n"
             f"👥 Yozish uchun:      <b>{REQUIRED_INVITES} ta do'st taklif</b>\n"
+            f"🔇 Mute muddati:      <b>{MUTE_DURATION} daqiqa</b>\n"
             f"🏠 Faol guruhlar:     <b>{len(groups)} ta</b>\n"
             f"🔔 Majburiy kanal:    <b>{ch_username if ch_username else 'Ornatilmagan'}</b>\n\n"
             "⚡ Barcha funksiyalar faol!",
@@ -1060,9 +1314,10 @@ def main():
 
     ch_username, _ = get_channel_settings()
     logger.info("=" * 60)
-    logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI! (v8)")
+    logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI! (v9)")
     logger.info(f"🔔 Majburiy kanal:     {ch_username or 'Ornatilmagan'}")
     logger.info(f"👥 Yozish uchun taklif: {REQUIRED_INVITES} ta do'st")
+    logger.info(f"🔇 Mute muddati:       {MUTE_DURATION} daqiqa")
     logger.info("=" * 60)
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
