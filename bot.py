@@ -316,6 +316,7 @@ def admin_kb():
         [InlineKeyboardButton("👑 Admin boshqaruv", callback_data="admin_manage")],
         [InlineKeyboardButton("🚫 Foydalanuvchi ban",  callback_data="ban_user_menu"),
          InlineKeyboardButton("👢 Foydalanuvchi kick", callback_data="kick_user_menu")],
+        [InlineKeyboardButton("✅ Foydalanuvchi unban", callback_data="unban_user_menu")],
     ])
 
 # ── Pastki ReplyKeyboard (admin uchun har doim ko'rinadi) ──
@@ -323,8 +324,8 @@ def admin_reply_kb():
     return ReplyKeyboardMarkup([
         ["🛠 Admin Panel",    "📊 Statistika"],
         ["🚫 Foydalanuvchi ban", "👢 Foydalanuvchi kick"],
-        ["👑 Admin qo'sh",   "📢 Broadcast"],
-        ["🔔 Kanal sozlash", "📡 Jonli efir"],
+        ["✅ Foydalanuvchi unban", "👑 Admin qo'sh"],
+        ["📢 Broadcast", "🔔 Kanal sozlash", "📡 Jonli efir"],
     ], resize_keyboard=True, input_field_placeholder="Amalni tanlang...")
 
 def user_kb(bot_username):
@@ -807,7 +808,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔔 Kanal:            <b>{ch_username if ch_username else 'Yoq'}</b>\n\n"
             f"🕐 <i>{datetime.now().strftime('%Y-%m-%d %H:%M')}</i>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]])
         )
         return
     if text == "🚫 Foydalanuvchi ban":
@@ -817,7 +818,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Avval guruh ID sini yuboring:\n"
             "<i>Misol: -1003835671404</i>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]])
         )
         return
     if text == "👢 Foydalanuvchi kick":
@@ -827,8 +828,17 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Avval guruh ID sini yuboring:\n"
             "<i>Misol: -1003835671404</i>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]])
         )
+        return
+    if text == "✅ Foydalanuvchi unban":
+        context.user_data["action"] = "unban_user_chat_id"
+        await update.message.reply_text(
+            "✅ <b>Foydalanuvchini Unban qilish</b>\n\n"
+            "Avval guruh ID sini yuboring:\n"
+            "<i>Misol: -1003835671404</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
         return
     if text == "👑 Admin qo'sh":
         context.user_data["action"] = "admin_chat_id"
@@ -837,7 +847,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "Admin qo'shmoqchi/o'chirmoqchi bo'lgan guruh ID sini yuboring:\n"
             "<i>Misol: -1001234567890</i>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]])
         )
         return
     if text == "📢 Broadcast":
@@ -846,7 +856,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(
             f"📢 <b>Broadcast</b>\n\nGuruhlar: <b>{len(groups)}</b>\n\n✍️ Xabarni yozing:",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]])
         )
         return
     if text == "🔔 Kanal sozlash":
@@ -1170,9 +1180,64 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             else:
                 await update.message.reply_text(f"❌ Xato: <code>{e}</code>", parse_mode=ParseMode.HTML)
 
+    # ══════════════════════════════════════
+    #  ✅ UNBAN USER — GURUH ID KIRISH
+    # ══════════════════════════════════════
+    elif action == "unban_user_chat_id":
+        raw = text.strip()
+        try:
+            cid = int(raw)
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri guruh ID! Qayta kiriting:")
+            return
+        context.user_data["unban_chat_id"] = cid
+        context.user_data["action"] = "unban_user_id"
+        await update.message.reply_text(
+            f"✅ <b>Unban — Guruh:</b> <code>{cid}</code>\n\n"
+            "Endi ban dan chiqarmoqchi bo'lgan foydalanuvchi <b>ID</b>sini yuboring:\n"
+            "<i>Misol: 123456789</i>\n\n"
+            "💡 ID bilish uchun @userinfobot ga yozing",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="unban_user_menu")]]))
 
-# ═══════════════════════════════════════════════════════
-#                   🔘 CALLBACK HANDLERLAR
+    # ══════════════════════════════════════
+    #  ✅ UNBAN USER — USER ID KIRISH VA UNBAN
+    # ══════════════════════════════════════
+    elif action == "unban_user_id":
+        raw = text.strip()
+        try:
+            uid = int(raw)
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri foydalanuvchi ID! Qayta kiriting:")
+            return
+        chat_id = context.user_data.get("unban_chat_id")
+        if not chat_id:
+            await update.message.reply_text("❌ Avval guruh ID sini kiriting.")
+            context.user_data.pop("action", None)
+            return
+        try:
+            await context.bot.unban_chat_member(chat_id=chat_id, user_id=uid, only_if_banned=True)
+            context.user_data.pop("action", None)
+            context.user_data.pop("unban_chat_id", None)
+            await update.message.reply_text(
+                f"✅ <b>Foydalanuvchi UNBAN qilindi!</b>\n\n"
+                f"👤 User ID: <code>{uid}</code>\n"
+                f"🏠 Guruh ID: <code>{chat_id}</code>\n\n"
+                f"✅ Foydalanuvchi endi guruhga qaytib kira oladi.",
+                parse_mode=ParseMode.HTML, reply_markup=admin_kb()
+            )
+            logger.info(f"✅ UNBAN: user={uid} chat={chat_id}")
+        except TelegramError as e:
+            err_str = str(e)
+            if "CHAT_ADMIN_REQUIRED" in err_str or "chat_admin_required" in err_str.lower():
+                await update.message.reply_text(
+                    "❌ <b>Xato: Chat_admin_required</b>\n\n"
+                    "🔧 Bot guruhda admin bo'lishi kerak!\n"
+                    "Va <b>«Ban Users»</b> ruxsati yoqilgan bo'lishi lozim.",
+                    parse_mode=ParseMode.HTML
+                )
+            else:
+                await update.message.reply_text(f"❌ Xato: <code>{e}</code>", parse_mode=ParseMode.HTML)
 # ═══════════════════════════════════════════════════════
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     q        = update.callback_query
@@ -1496,6 +1561,32 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<i>Misol: -1003835671404</i>",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="kick_user_menu")]])
+        )
+        return
+
+    # ══ UNBAN USER MENYU (CALLBACK) ══
+    if d == "unban_user_menu":
+        await q.edit_message_text(
+            "✅ <b>Foydalanuvchini Unban qilish</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+            "Unban qilingan foydalanuvchi guruhga qaytib kira oladi.\n\n"
+            "⚠️ Bot guruhda admin bo'lishi va <b>Ban Users</b> ruxsati bo'lishi kerak!\n\n"
+            "Guruh ID sini kiriting:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📝 Guruh ID kiriting", callback_data="ask_unban_user_chat")],
+                [InlineKeyboardButton("🔙 Orqaga",            callback_data="back_admin")],
+            ])
+        )
+        return
+
+    if d == "ask_unban_user_chat":
+        context.user_data["action"] = "unban_user_chat_id"
+        await q.edit_message_text(
+            "✅ <b>Unban — Guruh ID kiriting</b>\n\n"
+            "Unban qilmoqchi bo'lgan guruh ID sini yuboring:\n"
+            "<i>Misol: -1003835671404</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="unban_user_menu")]])
         )
         return
 
