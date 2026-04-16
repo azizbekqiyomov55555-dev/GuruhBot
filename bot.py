@@ -1688,14 +1688,16 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         for g in pg:
             cid, title, uname, _, added, _, _ = g
             un = f"@{uname}" if uname else "—"
-            inv_off = get_invite_disabled(cid)
-            ls_on   = get_livestream_status(cid)
+            inv_off    = get_invite_disabled(cid)
+            ls_on      = get_livestream_status(cid)
+            inv_status = "❌ O'chiq" if inv_off else "✅ Yoqiq"
+            ls_status  = "🔴 Yoqiq"  if ls_on  else "⚫ O'chiq"
             text += (
                 f"📌 <b>{title}</b>\n"
                 f"   🆔 <code>{cid}</code>  {un}\n"
                 f"   📅 {added}\n"
-                f"   🔗 Taklif: {'❌ O\'chiq' if inv_off else '✅ Yoqiq'}  "
-                f"📡 Efir: {'🔴 Yoqiq' if ls_on else '⚫ O\'chiq'}\n\n"
+                f"   🔗 Taklif: {inv_status}  "
+                f"📡 Efir: {ls_status}\n\n"
             )
         nav = []
         if page > 0:
