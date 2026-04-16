@@ -331,18 +331,11 @@ def is_admin(uid):
 
 def admin_kb():
     return InlineKeyboardMarkup([
-        [InlineKeyboardButton("📊 Statistika",        callback_data="stats"),
-         InlineKeyboardButton("👥 Guruhlar",          callback_data="groups_0")],
-        [InlineKeyboardButton("🚫 Taqiqlangan",       callback_data="banned"),
-         InlineKeyboardButton("⚙️ Sozlamalar",        callback_data="settings")],
-        [InlineKeyboardButton("📢 Broadcast",         callback_data="broadcast_ask")],
-        [InlineKeyboardButton("🔔 Kanal sozlash",     callback_data="channel_manage")],
-        [InlineKeyboardButton("📡 Jonli efir",        callback_data="livestream_menu")],
-        [InlineKeyboardButton("👑 Admin boshqaruv",   callback_data="admin_manage")],
-        [InlineKeyboardButton("🚫 Foydalanuvchi ban",  callback_data="ban_user_menu"),
-         InlineKeyboardButton("👢 Foydalanuvchi kick", callback_data="kick_user_menu")],
-        [InlineKeyboardButton("✅ Foydalanuvchi unban", callback_data="unban_user_menu")],
-        [InlineKeyboardButton("🔗 Taklif boshqaruv",  callback_data="invite_manage_menu")],
+        [InlineKeyboardButton("📊 Statistika",  callback_data="stats"),
+         InlineKeyboardButton("👥 Guruhlar",    callback_data="groups_0")],
+        [InlineKeyboardButton("🚫 Taqiqlangan", callback_data="banned"),
+         InlineKeyboardButton("⚙️ Sozlamalar",  callback_data="settings")],
+        [InlineKeyboardButton("📢 Broadcast",   callback_data="broadcast_ask")],
     ])
 
 def admin_reply_kb():
