@@ -1,37 +1,40 @@
-# ╔══════════════════════════════════════════════════════════════════╗
-# ║        🤖 YORDAMCHI + TEKSHIRISH BOT — BIRLASHTIRILGAN v1      ║
-# ║   ✅ /start bosgan foydalanuvchilarni saqlash                  ║
-# ║   ✅ Admin panel — foydalanuvchini ID bo'yicha tekshirish      ║
-# ║   ✅ Foydalanuvchi ismi, ID, guruhlari, yozgan guruhlari       ║
-# ║   ✅ Obuna bo'lgan kanallar (bot admin bo'lgan kanallar)       ║
-# ║   ✅ Guruhda yozish uchun kanalga OBUNA bo'lish shart          ║
-# ║   ✅ Guruhda yozish uchun 2 DO'ST TAKLIF qilish shart         ║
-# ║   ✅ Har 2 daqiqada taklif xabari                               ║
-# ║   ✅ Taklif qilgan odam maqtaladi                               ║
-# ║   ✅ JONLI EFIR boshqaruvi (yoqish/o'chirish)                  ║
-# ║   ✅ So'kingan foydalanuvchini avtomatik MUTE qilish           ║
-# ║   ✅ Admin qo'shishda HUQUQLARNI SO'RASH (inline tanlov)       ║
-# ║   ✅ Foydalanuvchini BAN / KICK / UNBAN qilish                 ║
-# ║   ✅ Pastki menyu tugmalari (ReplyKeyboard)                    ║
-# ╚══════════════════════════════════════════════════════════════════╝
+# ╔══════════════════════════════════════════════════════════════════════╗
+# ║   🤖 YORDAMCHI + TEKSHIRISH + 🎵 MUSIQA BOT — BIRLASHTIRILGAN v2  ║
+# ║   ✅ /start bosgan foydalanuvchilarni saqlash                      ║
+# ║   ✅ Admin panel — foydalanuvchini ID bo'yicha tekshirish          ║
+# ║   ✅ Foydalanuvchi ismi, ID, guruhlari, yozgan guruhlari           ║
+# ║   ✅ Obuna bo'lgan kanallar (bot admin bo'lgan kanallar)           ║
+# ║   ✅ Guruhda yozish uchun kanalga OBUNA bo'lish shart              ║
+# ║   ✅ Guruhda yozish uchun 2 DO'ST TAKLIF qilish shart             ║
+# ║   ✅ Har 2 daqiqada taklif xabari                                   ║
+# ║   ✅ Taklif qilgan odam maqtaladi                                   ║
+# ║   ✅ JONLI EFIR boshqaruvi (yoqish/o'chirish)                      ║
+# ║   ✅ So'kingan foydalanuvchini avtomatik MUTE qilish               ║
+# ║   ✅ Admin qo'shishda HUQUQLARNI SO'RASH (inline tanlov)           ║
+# ║   ✅ Foydalanuvchini BAN / KICK / UNBAN qilish                     ║
+# ║   ✅ Pastki menyu tugmalari (ReplyKeyboard)                        ║
+# ║   🎵 /play [qo'shiq nomi] — YouTube'dan musiqa yuklash            ║
+# ║   🎵 Guruhga yangi a'zo qo'shilganda musiqa xabari                ║
+# ║   🎵 Guruhda /play buyrug'i bilan musiqa izlash                    ║
+# ╚══════════════════════════════════════════════════════════════════════╝
 #
 # 💡 ISHGA TUSHIRISH:
-#   pip install python-telegram-bot==20.7
+#   pip install python-telegram-bot==20.7 yt-dlp
+#   sudo apt install ffmpeg   (Linux) yoki ffmpeg.org (Windows)
 #
 # ⚙️ BOT SOZLAMALARI (@BotFather):
 #   1. Bot Settings → Group Privacy → DISABLE
 #   2. Botni guruhga ADMIN qiling
 #   3. Admin ruxsatlari: ✅ Invite Users, ✅ Add Members,
 #      ✅ Delete Messages, ✅ Restrict Members,
-#      ✅ Promote Members ← MUHIM! (Admin qo'shish uchun)
-#      ✅ Ban Users ← MUHIM! (Ban/Kick uchun)
-#   4. Botni kanalga ham ADMIN qiling (obuna tekshirish uchun)
+#      ✅ Promote Members, ✅ Ban Users
 
 import logging
 import sqlite3
 import asyncio
 import random
 import urllib.parse
+import os
 from datetime import datetime, timedelta
 
 from telegram import (
@@ -44,6 +47,8 @@ from telegram.ext import (
 )
 from telegram.constants import ParseMode
 from telegram.error import TelegramError
+
+import yt_dlp
 
 
 # ═══════════════════════════════════════════════════════
@@ -65,6 +70,9 @@ INVITE_MESSAGE = (
 
 # Xotirada saqlanadigan taklif linklari: link → (user_id, user_name, chat_id)
 invite_links_db: dict = {}
+
+# Musiqa kutish holati: user_id → True
+waiting_for_music: dict = {}
 
 
 # ═══════════════════════════════════════════════════════
@@ -167,7 +175,6 @@ def init_db():
     conn = sqlite3.connect("bot_data.db")
     c = conn.cursor()
 
-    # Guruhlar jadvali
     c.execute("""CREATE TABLE IF NOT EXISTS groups (
         chat_id           INTEGER PRIMARY KEY,
         title             TEXT    DEFAULT '',
@@ -181,7 +188,6 @@ def init_db():
         invite_disabled   INTEGER DEFAULT 0
     )""")
 
-    # Kanallar jadvali (bot admin bo'lgan kanallar — tekshirish uchun)
     c.execute("""CREATE TABLE IF NOT EXISTS channels (
         chat_id    INTEGER PRIMARY KEY,
         title      TEXT DEFAULT '',
@@ -189,7 +195,6 @@ def init_db():
         added_date TEXT DEFAULT ''
     )""")
 
-    # Foydalanuvchilar jadvali (/start bosganlar)
     c.execute("""CREATE TABLE IF NOT EXISTS users (
         user_id    INTEGER PRIMARY KEY,
         username   TEXT DEFAULT '',
@@ -199,14 +204,12 @@ def init_db():
         last_seen  TEXT DEFAULT ''
     )""")
 
-    # Foydalanuvchi qaysi guruhda ko'rilgan
     c.execute("""CREATE TABLE IF NOT EXISTS user_groups (
         user_id INTEGER,
         chat_id INTEGER,
         PRIMARY KEY (user_id, chat_id)
     )""")
 
-    # Foydalanuvchi yozgan xabarlar (guruh bo'yicha)
     c.execute("""CREATE TABLE IF NOT EXISTS user_messages (
         id      INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER,
@@ -214,7 +217,6 @@ def init_db():
         date    TEXT
     )""")
 
-    # Xabarlar statistikasi
     c.execute("""CREATE TABLE IF NOT EXISTS messages (
         id       INTEGER PRIMARY KEY AUTOINCREMENT,
         chat_id  INTEGER,
@@ -223,7 +225,6 @@ def init_db():
         date     TEXT
     )""")
 
-    # Bot sozlamalari (kanal username, link)
     c.execute("""CREATE TABLE IF NOT EXISTS settings (
         key   TEXT PRIMARY KEY,
         value TEXT DEFAULT ''
@@ -231,7 +232,6 @@ def init_db():
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('channel_username', '')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('channel_link', '')")
 
-    # Foydalanuvchi taklif hisobi
     c.execute("""CREATE TABLE IF NOT EXISTS user_invites (
         chat_id      INTEGER,
         user_id      INTEGER,
@@ -239,7 +239,6 @@ def init_db():
         PRIMARY KEY (chat_id, user_id)
     )""")
 
-    # Migration: yangi ustunlar mavjud bo'lmasa qo'shamiz
     for col in ["livestream_active INTEGER DEFAULT 0", "invite_disabled INTEGER DEFAULT 0"]:
         try:
             c.execute(f"ALTER TABLE groups ADD COLUMN {col}")
@@ -327,7 +326,6 @@ def add_group(chat_id, title, username):
     c.execute("UPDATE groups SET title=?, username=? WHERE chat_id=?", (title or "", username or "", chat_id))
     conn.commit(); conn.close()
 
-# save_group — add_group bilan bir xil, qo'llab-quvvatlash uchun
 save_group = add_group
 
 def ban_group(chat_id, reason=""):
@@ -371,29 +369,28 @@ def get_stats():
     conn.close(); return active, banned, total, today
 
 
-# ── Kanallar (bot admin bo'lgan — tekshirish uchun) ──
+# ── Kanallar ──
 def save_channel(chat_id, title, username):
     conn = get_db(); c = conn.cursor()
-    now = datetime.now().strftime("%Y-%m-%d %H:%M")
-    c.execute("""INSERT INTO channels (chat_id, title, username, added_date)
-                 VALUES (?, ?, ?, ?)
-                 ON CONFLICT(chat_id) DO UPDATE SET title=excluded.title, username=excluded.username""",
-              (chat_id, title or "", username or "", now))
+    c.execute("""INSERT OR IGNORE INTO channels (chat_id, title, username, added_date)
+                 VALUES (?, ?, ?, ?)""",
+              (chat_id, title or "", username or "", datetime.now().strftime("%Y-%m-%d %H:%M")))
+    c.execute("UPDATE channels SET title=?, username=? WHERE chat_id=?", (title or "", username or "", chat_id))
     conn.commit(); conn.close()
 
 def get_all_channels():
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT chat_id, title, username FROM channels")
+    c.execute("SELECT chat_id, title, username, added_date FROM channels")
     rows = c.fetchall(); conn.close(); return rows
 
 
-# ── Bot sozlamalari (majburiy kanal) ──
-def get_channel_settings() -> tuple:
+# ── Kanal sozlamalari ──
+def get_channel_settings():
     conn = get_db(); c = conn.cursor()
-    c.execute("SELECT value FROM settings WHERE key='channel_username'"); row1 = c.fetchone()
-    c.execute("SELECT value FROM settings WHERE key='channel_link'"); row2 = c.fetchone()
+    c.execute("SELECT value FROM settings WHERE key='channel_username'"); u = c.fetchone()
+    c.execute("SELECT value FROM settings WHERE key='channel_link'"); l = c.fetchone()
     conn.close()
-    return (row1[0] if row1 else "", row2[0] if row2 else "")
+    return (u[0] if u else ""), (l[0] if l else "")
 
 def save_channel_settings(username: str, link: str):
     conn = get_db(); c = conn.cursor()
@@ -529,6 +526,7 @@ def admin_reply_kb():
 def user_kb(bot_username):
     return InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_username}?startgroup=true")],
+        [InlineKeyboardButton("🎵 Musiqa Izla",      callback_data="music_search")],
         [InlineKeyboardButton("❓ Qo'llanma",        callback_data="how_to_add")],
         [InlineKeyboardButton("🆘 Adminga yozish",   callback_data="contact_admin")],
     ])
@@ -829,6 +827,118 @@ async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ═══════════════════════════════════════════════════════
+#   🎵 MUSIQA FUNKSIYALARI
+# ═══════════════════════════════════════════════════════
+async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
+    """YouTube'dan musiqa yuklab yuboradi"""
+    msg = await update.message.reply_text(
+        f"🔍 <b>{query}</b> — izlanmoqda...",
+        parse_mode=ParseMode.HTML
+    )
+
+    try:
+        ydl_opts = {
+            "format": "bestaudio/best",
+            "outtmpl": "/tmp/%(title)s.%(ext)s",
+            "postprocessors": [{
+                "key": "FFmpegExtractAudio",
+                "preferredcodec": "mp3",
+                "preferredquality": "192",
+            }],
+            "quiet": True,
+            "no_warnings": True,
+            "default_search": "ytsearch1",
+            "noplaylist": True,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            await msg.edit_text(
+                f"⏳ <b>{query}</b> — yuklanmoqda...",
+                parse_mode=ParseMode.HTML
+            )
+            info = ydl.extract_info(query, download=True)
+
+            if "entries" in info:
+                info = info["entries"][0]
+
+            title    = info.get("title", query)
+            duration = info.get("duration", 0)
+            uploader = info.get("uploader", "Noma'lum")
+
+            filename = ydl.prepare_filename(info)
+            mp3_file = filename.rsplit(".", 1)[0] + ".mp3"
+
+            if not os.path.exists(mp3_file):
+                for ext in [".mp3", ".m4a", ".webm", ".opus"]:
+                    test_file = filename.rsplit(".", 1)[0] + ext
+                    if os.path.exists(test_file):
+                        mp3_file = test_file
+                        break
+
+            if not os.path.exists(mp3_file):
+                await msg.edit_text("❌ Fayl topilmadi. Boshqa nom bilan urinib ko'ring.")
+                return
+
+            file_size = os.path.getsize(mp3_file) / (1024 * 1024)
+            if file_size > 49:
+                await msg.edit_text("❌ Fayl juda katta (50MB dan ortiq). Boshqa qo'shiq tanlang.")
+                os.remove(mp3_file)
+                return
+
+            minutes = duration // 60
+            seconds = duration % 60
+
+            caption = (
+                f"🎵 <b>{title}</b>\n"
+                f"👤 {uploader}\n"
+                f"⏱ {minutes}:{seconds:02d}\n\n"
+                f"🤖 {BOT_NAME}"
+            )
+
+            await msg.edit_text(
+                f"📤 <b>{title}</b> — jo'natilmoqda...",
+                parse_mode=ParseMode.HTML
+            )
+
+            with open(mp3_file, "rb") as audio_file:
+                await update.message.reply_audio(
+                    audio=audio_file,
+                    title=title,
+                    performer=uploader,
+                    caption=caption,
+                    parse_mode=ParseMode.HTML,
+                )
+
+            os.remove(mp3_file)
+            await msg.delete()
+
+    except Exception as e:
+        logger.error(f"Musiqa yuklab olishda xato: {e}")
+        await msg.edit_text(
+            f"❌ <b>{query}</b> topilmadi yoki xato yuz berdi.\n\n"
+            "💡 Boshqa nom bilan urinib ko'ring!\n"
+            "📝 <i>Misol: /play Ulug'bek Rahmatullayev</i>",
+            parse_mode=ParseMode.HTML
+        )
+
+
+async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/play buyrug'i — musiqa izlash"""
+    if not context.args:
+        await update.message.reply_text(
+            "🎵 <b>Qo'shiq nomini kiriting!</b>\n\n"
+            "📝 <b>Misol:</b> <code>/play Shahlo Ahmedova</code>\n"
+            "🔗 YouTube URL ham ishlaydi:\n"
+            "<code>/play https://youtube.com/...</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    query = " ".join(context.args)
+    await download_and_send_music(update, context, query)
+
+
+# ═══════════════════════════════════════════════════════
 #   📨 ASOSIY HANDLERLAR
 # ═══════════════════════════════════════════════════════
 async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -846,11 +956,11 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👑 Xush kelibsiz, <b>{user.first_name}</b>!\n\n"
             f"🤖 <b>{BOT_NAME}</b> — Admin Panel\n\n"
             f"📊 <b>Holat:</b>\n"
-            f"  ✅ Faol guruhlar:     <b>{active}</b>\n"
-            f"  🚫 Taqiqlangan:       <b>{banned}</b>\n"
-            f"  💬 Jami xabarlar:    <b>{total}</b>\n"
-            f"  📅 Bugun:             <b>{today}</b>\n"
-            f"  🏠 Taklif guruhlari:  <b>{len(groups)} ta</b>\n"
+            f"  ✅ Faol guruhlar:       <b>{active}</b>\n"
+            f"  🚫 Taqiqlangan:         <b>{banned}</b>\n"
+            f"  💬 Jami xabarlar:       <b>{total}</b>\n"
+            f"  📅 Bugun:               <b>{today}</b>\n"
+            f"  🏠 Taklif guruhlari:    <b>{len(groups)} ta</b>\n"
             f"  📢 Kuzatilgan kanallar: <b>{len(channels)} ta</b>\n\n"
             f"👇 Boshqarish uchun:",
             parse_mode=ParseMode.HTML,
@@ -870,6 +980,8 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"  1️⃣ Kanalga obuna bo'ling\n"
             f"  2️⃣ {REQUIRED_INVITES} ta do'st taklif qiling\n"
             f"  3️⃣ Shundan keyin erkin yozasiz! ✅\n\n"
+            "🎵 <b>Musiqa tinglash:</b>\n"
+            "  👉 /play [qo'shiq nomi]\n\n"
             "👇 Tanlang:",
             parse_mode=ParseMode.HTML,
             reply_markup=user_kb(bot_info.username)
@@ -893,6 +1005,28 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
             add_group(chat.id, chat.title, chat.username)
             logger.info(f"✅ Guruhga qo'shildi: {chat.title} ({chat.id})")
+            # Guruhga qo'shilganda salom + musiqa xabari
+            try:
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=(
+                        f"🎵 <b>Assalomu alaykum! Men {BOT_NAME}man!</b> 🎵\n\n"
+                        f"✅ Guruhingizga qo'shildim!\n\n"
+                        f"🎶 <b>Musiqa tinglash uchun:</b>\n"
+                        f"  👉 /play [qo'shiq nomi]\n\n"
+                        f"🛡 <b>Guruh himoyasi:</b>\n"
+                        f"  ✅ So'kinish filtri\n"
+                        f"  ✅ Obuna tekshiruvi\n"
+                        f"  ✅ Do'st taklif tizimi\n\n"
+                        f"🎵 <i>Musiqa bilan hayot go'zal!</i>"
+                    ),
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([
+                        [InlineKeyboardButton("🎵 Musiqa Izla", callback_data="music_search")],
+                    ])
+                )
+            except Exception as e:
+                logger.error(f"Guruhga qo'shilish xabari xatosi: {e}")
         elif status in (ChatMember.LEFT, ChatMember.BANNED):
             conn = get_db(); c = conn.cursor()
             c.execute("UPDATE groups SET invite_active=0 WHERE chat_id=?", (chat.id,))
@@ -901,6 +1035,19 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if status == ChatMember.ADMINISTRATOR:
             save_channel(chat.id, chat.title, chat.username)
             logger.info(f"✅ Kanalga admin qo'shildi: {chat.title} ({chat.id})")
+            # Kanalga qo'shilganda xabar
+            try:
+                await context.bot.send_message(
+                    chat_id=chat.id,
+                    text=(
+                        f"🎵 <b>{BOT_NAME} kanalingizga qo'shildi!</b>\n\n"
+                        f"✅ Endi bu kanal obuna tekshiruvida ishlatilishi mumkin.\n\n"
+                        f"🎶 /play [qo'shiq nomi] — Musiqa yuklash"
+                    ),
+                    parse_mode=ParseMode.HTML
+                )
+            except Exception:
+                pass
 
 
 # ── Yangi a'zo guruhga qo'shilganda ──
@@ -929,9 +1076,10 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"Shundan keyin guruhda <b>erkin yozasiz!</b> ✅"
             )
             greet_text = (
-                f"🎉 Xush kelibsiz {mn}!\n\n"
+                f"🎵 Xush kelibsiz {mn}! 🎵\n\n"
                 f"📋 <b>Guruhda yozish uchun:</b>\n"
                 + "\n".join(steps)
+                + "\n\n🎶 <b>Musiqa tinglash:</b> /play [qo'shiq nomi]"
             )
             btns = []
             if ch_username and ch_link:
@@ -939,17 +1087,24 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if not get_invite_disabled(update.effective_chat.id):
                 btns.append([InlineKeyboardButton("➕ Do'st taklif qilish",
                                                   callback_data=f"invite_{update.effective_chat.id}")])
+            btns.append([InlineKeyboardButton("🎵 Musiqa Izla", callback_data="music_search")])
             await update.message.reply_text(
                 greet_text, parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(btns) if btns else None
             )
         else:
-            greets = [
-                f"🎉 Xush kelibsiz {mn}! 😊🌟",
-                f"👋 Salom {mn}! Guruhimizga marhamat! 🎊",
-                f"✨ {mn} bilan guruh yanada jonlandi! 💫",
+            music_greets = [
+                f"🎵 Xush kelibsiz {mn}! Musiqa tinglash uchun /play yozing! 😊🌟",
+                f"👋 Salom {mn}! Guruhimizga marhamat! 🎊 /play bilan musiqa eshiting!",
+                f"✨ {mn} bilan guruh yanada jonlandi! 💫 🎵 /play [qo'shiq nomi]",
             ]
-            await update.message.reply_text(random.choice(greets), parse_mode=ParseMode.HTML)
+            await update.message.reply_text(
+                random.choice(music_greets),
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("🎵 Musiqa Izla", callback_data="music_search")]
+                ])
+            )
 
 
 # ═══════════════════════════════════════════════════════
@@ -1017,7 +1172,13 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_admin(user.id) or update.effective_chat.type != "private":
+        # Oddiy foydalanuvchi — musiqa izlash uchun kutish holati
+        text = update.message.text or ""
+        if waiting_for_music.get(user.id):
+            waiting_for_music[user.id] = False
+            await download_and_send_music(update, context, text)
         return
+
     text   = update.message.text or ""
     action = context.user_data.get("action")
 
@@ -1054,10 +1215,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "<i>Misol: 123456789</i>\n\n"
             "💡 ID bilish uchun @userinfobot ga yozing",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 Bekor", callback_data="cancel_action")
-            ]])
-        )
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="cancel_action")]]))
         return
 
     if text == "👥 Guruhlar ro'yxati":
@@ -1101,665 +1259,323 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if text == "👑 Admin qo'sh":
         context.user_data["action"] = "admin_chat_id"
         await update.message.reply_text(
-            "👑 <b>Guruh ID kiriting</b>\n\n<i>Misol: -1001234567890</i>",
+            "👑 <b>Admin qo'shish</b>\n\nGuruh ID sini yuboring:\n<i>Misol: -1003835671404</i>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]]))
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
         return
 
     if text == "📢 Broadcast":
         context.user_data["action"] = "broadcast"
-        groups = [g for g in get_all_groups() if g[5] == 0]
         await update.message.reply_text(
-            f"📢 <b>Broadcast</b>\n\nGuruhlar: <b>{len(groups)}</b>\n\n✍️ Xabarni yozing:",
+            "📢 <b>Broadcast xabar</b>\n\nBarcha guruhlarga yuboriladigan xabarni yozing:",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
         return
 
     if text == "🔔 Kanal sozlash":
-        ch_username, ch_link = get_channel_settings()
-        status_text = (
-            f"✅ <b>Faol kanal:</b> {ch_username}\n🔗 {ch_link}" if ch_username
-            else "❌ <b>Kanal o'rnatilmagan</b>"
-        )
+        context.user_data["action"] = "set_channel"
         await update.message.reply_text(
-            f"🔔 <b>Kanal Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n{status_text}\n\n👇 Amalni tanlang:",
+            "🔔 <b>Majburiy kanal sozlash</b>\n\n"
+            "Kanal username va link yuboring (ikkala qatorda):\n\n"
+            "<i>Misol:\n@mening_kanalim\nhttps://t.me/mening_kanalim</i>\n\n"
+            "O'chirish uchun: <code>clear</code>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➕ Kanal o'rnatish / o'zgartirish", callback_data="channel_set")],
-                [InlineKeyboardButton("🗑 Kanalni o'chirish",              callback_data="channel_clear")],
-                [InlineKeyboardButton("🔙 Orqaga",                         callback_data="back_admin")],
-            ]))
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
         return
 
     if text == "📡 Jonli efir":
-        await update.message.reply_text("📡 Jonli efir:", parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("📡 Jonli efir menyu", callback_data="livestream_menu")]]))
+        await update.message.reply_text(
+            "📡 <b>Jonli efir boshqaruvi</b>\n\nGuruh ID sini yuboring:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("📝 Guruh tanlash", callback_data="livestream_menu")],
+                [InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")],
+            ]))
         return
 
     if text == "🔗 Taklif boshqaruv":
-        await update.message.reply_text("🔗 Taklif boshqaruvi:", parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔗 Taklif menyu", callback_data="invite_manage_menu")]]))
+        await on_callback_invite_manage(update, context)
         return
 
-    # ── Action ishlovchilari ──
+    # ── Amallar (action) ──
     if action == "check_user":
-        raw = text.strip()
+        context.user_data.pop("action", None)
         try:
-            uid = int(raw)
+            uid = int(text.strip())
         except ValueError:
-            await update.message.reply_text(
-                "❌ Noto'g'ri ID! Faqat raqam kiriting:\n<i>Misol: 123456789</i>",
-                parse_mode=ParseMode.HTML
-            )
+            await update.message.reply_text("❌ Noto'g'ri ID! Faqat raqam kiriting.")
             return
-
-        context.user_data.pop("action", None)
-        wait_msg = await update.message.reply_text("⏳ Tekshirilmoqda...")
         info = get_user_info(uid)
-
-        # Bot admin bo'lgan kanallarni tekshirish
-        channels = get_all_channels()
-        subscribed_channels = []
-        not_subscribed = []
-        for ch_id, ch_title, ch_uname in channels:
-            try:
-                member = await context.bot.get_chat_member(chat_id=ch_id, user_id=uid)
-                if member.status not in ("kicked", "left"):
-                    subscribed_channels.append((ch_id, ch_title, ch_uname))
-                else:
-                    not_subscribed.append((ch_id, ch_title, ch_uname))
-            except TelegramError:
-                not_subscribed.append((ch_id, ch_title, ch_uname))
-
-        tg_user = None
-        try:
-            tg_chat = await context.bot.get_chat(uid)
-            tg_user = tg_chat
-        except TelegramError:
-            pass
-
-        lines = [f"🔍 <b>Foydalanuvchi tekshiruvi</b>\n{'━'*22}\n"]
-        lines.append("👤 <b>MA'LUMOT</b>")
-        lines.append(f"🆔 ID: <code>{uid}</code>")
-
-        if tg_user:
-            full_name = tg_user.first_name or ""
-            if tg_user.last_name:
-                full_name += f" {tg_user.last_name}"
-            lines.append(f"📛 Ism: <b>{full_name}</b>")
-            lines.append(f"🔗 Username: @{tg_user.username}" if tg_user.username else "🔗 Username: <i>yo'q</i>")
-        elif info:
-            full_name = info["first_name"]
-            if info["last_name"]:
-                full_name += f" {info['last_name']}"
-            lines.append(f"📛 Ism: <b>{full_name}</b>")
-            lines.append(f"🔗 Username: @{info['username']}" if info["username"] else "🔗 Username: <i>yo'q</i>")
-        else:
-            lines.append("📛 Ism: <i>ma'lumot yo'q</i>")
-            lines.append("🔗 Username: <i>ma'lumot yo'q</i>")
-
-        if info:
-            lines.append(f"📅 Ro'yxat: <b>{info['start_date'] or '—'}</b>")
-            lines.append(f"🕐 So'nggi: <b>{info['last_seen'] or '—'}</b>")
-        else:
-            lines.append("\n⚠️ <i>Bu foydalanuvchi botga /start yubormagan</i>")
-
-        lines.append("")
-
-        if info and info["groups"]:
-            lines.append(f"🏠 <b>GURUHLARDA BOR</b> ({len(info['groups'])} ta)")
-            for gid, gtitle, guname in info["groups"]:
-                un = f"@{guname}" if guname else ""
-                lines.append(f"  • <b>{gtitle}</b> {un}\n    <code>{gid}</code>")
-        else:
-            lines.append("🏠 <b>GURUHLARDA BOR:</b> <i>ma'lumot yo'q</i>")
-
-        lines.append("")
-
-        if info and info["written"]:
-            lines.append(f"✍️ <b>XABAR YOZGAN GURUHLAR</b> ({len(info['written'])} ta)")
-            for gid, gtitle, guname, msg_count in info["written"]:
-                un = f"@{guname}" if guname else ""
-                lines.append(f"  • <b>{gtitle}</b> {un}\n    💬 {msg_count} ta xabar  <code>{gid}</code>")
-        else:
-            lines.append("✍️ <b>XABAR YOZGAN GURUHLAR:</b> <i>hech qayerda yozmagan</i>")
-
-        lines.append("")
-
-        if channels:
-            if subscribed_channels:
-                lines.append(f"✅ <b>OBUNA BO'LGAN KANALLAR</b> ({len(subscribed_channels)} ta)")
-                for ch_id, ch_title, ch_uname in subscribed_channels:
-                    un = f"@{ch_uname}" if ch_uname else ""
-                    lines.append(f"  • ✅ <b>{ch_title}</b> {un}")
-            else:
-                lines.append("✅ <b>OBUNA BO'LGAN KANALLAR:</b> <i>hech biriga emas</i>")
-
-            if not_subscribed:
-                lines.append(f"\n❌ <b>OBUNA BO'LMAGAN KANALLAR</b> ({len(not_subscribed)} ta)")
-                for ch_id, ch_title, ch_uname in not_subscribed:
-                    un = f"@{ch_uname}" if ch_uname else ""
-                    lines.append(f"  • ❌ <b>{ch_title}</b> {un}")
-        else:
-            lines.append("📢 <b>KANALLAR:</b> <i>Bot hech bir kanalda admin emas</i>")
-            lines.append("💡 Botni kanalga admin qiling — obuna tekshiriladi")
-
-        result_text = "\n".join(lines)
-        kb = InlineKeyboardMarkup([
-            [InlineKeyboardButton("🔍 Yana tekshirish", callback_data="check_user_menu")],
-            [InlineKeyboardButton("🔙 Panel",           callback_data="back_admin")],
-        ])
-        try:
-            await wait_msg.edit_text(result_text, parse_mode=ParseMode.HTML, reply_markup=kb)
-        except Exception:
-            await wait_msg.delete()
-            await update.message.reply_text(result_text[:4000], parse_mode=ParseMode.HTML)
-            if len(result_text) > 4000:
-                await update.message.reply_text(result_text[4000:], parse_mode=ParseMode.HTML, reply_markup=kb)
-        return
-
-    if action == "set_channel":
-        raw = text.strip()
-        if not raw.startswith("@") and not raw.startswith("-"):
-            raw = "@" + raw
-        link = f"https://t.me/{raw.lstrip('@')}"
-        save_channel_settings(raw, link)
-        context.user_data.pop("action", None)
+        if not info:
+            await update.message.reply_text(f"❌ ID <code>{uid}</code> topilmadi.", parse_mode=ParseMode.HTML)
+            return
+        uname_str = f"@{info['username']}" if info['username'] else "—"
+        groups_str = "\n".join(
+            [f"   📌 {g[1]} (@{g[2]})" if g[2] else f"   📌 {g[1]}" for g in info['groups']]
+        ) or "   —"
+        written_str = "\n".join(
+            [f"   💬 {w[1]}: {w[3]} ta xabar" for w in info['written']]
+        ) or "   —"
         await update.message.reply_text(
-            f"✅ <b>Kanal o'rnatildi!</b>\n\n📢 Username: <b>{raw}</b>\n🔗 {link}\n\n"
-            f"⚠️ Botni shu kanalga <b>Admin</b> qiling!",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Kanal menyu", callback_data="channel_manage")]]))
-        return
-
-    if action == "ban_id":
-        try:
-            cid = int(text.strip()); ban_group(cid, "Admin taqiqladi")
-            context.user_data.pop("action", None)
-            await update.message.reply_text(f"✅ Guruh <code>{cid}</code> taqiqlandi!", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri ID!")
-        return
-
-    if action == "unban_id":
-        try:
-            cid = int(text.strip()); unban_group(cid)
-            context.user_data.pop("action", None)
-            await update.message.reply_text(f"✅ Guruh <code>{cid}</code> tiklandi!", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri ID!")
+            f"🔍 <b>Foydalanuvchi Ma'lumoti</b>\n━━━━━━━━━━━━━━━━━━━━\n"
+            f"👤 Ism: <b>{info['first_name']} {info['last_name']}</b>\n"
+            f"🆔 ID: <code>{info['user_id']}</code>\n"
+            f"📛 Username: {uname_str}\n"
+            f"📅 Qo'shilgan: {info['start_date']}\n"
+            f"🕐 So'nggi: {info['last_seen']}\n\n"
+            f"👥 <b>Ko'rilgan guruhlar:</b>\n{groups_str}\n\n"
+            f"✍️ <b>Yozgan guruhlari:</b>\n{written_str}",
+            parse_mode=ParseMode.HTML
+        )
         return
 
     if action == "broadcast":
-        groups  = [g for g in get_all_groups() if g[5] == 0]
-        sent = failed = 0
-        for g in groups:
-            try:
-                await context.bot.send_message(g[0], f"📢 <b>E'lon:</b>\n\n{text}", parse_mode=ParseMode.HTML)
-                sent += 1
-            except Exception:
-                failed += 1
         context.user_data.pop("action", None)
-        await update.message.reply_text(f"📢 <b>Yuborildi!</b>\n✅ {sent} ta\n❌ {failed} ta", parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+        group_ids = get_active_groups()
+        sent_count = 0
+        for gid in group_ids:
+            try:
+                await context.bot.send_message(chat_id=gid, text=text, parse_mode=ParseMode.HTML)
+                sent_count += 1
+                await asyncio.sleep(0.05)
+            except Exception as e:
+                logger.error(f"Broadcast xato ({gid}): {e}")
+        await update.message.reply_text(f"✅ <b>Broadcast yuborildi!</b>\n\n📨 {sent_count} ta guruhga.", parse_mode=ParseMode.HTML)
         return
 
-    if action == "livestream_set_chat":
-        try:
-            cid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri ID! Qayta kiriting:")
-            return
-        context.user_data["ls_chat_id"] = cid
+    if action == "set_channel":
         context.user_data.pop("action", None)
-        status = get_livestream_status(cid)
-        status_text = "✅ YOQIQ" if status else "❌ O'CHIQ"
-        await update.message.reply_text(
-            f"📡 <b>Jonli Efir — Guruh:</b> <code>{cid}</code>\nHozirgi holat: <b>{status_text}</b>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("▶️ Yoqish",   callback_data=f"ls_on_{cid}")],
-                [InlineKeyboardButton("⏹ O'chirish", callback_data=f"ls_off_{cid}")],
-                [InlineKeyboardButton("🔙 Orqaga",   callback_data="livestream_menu")],
-            ]))
+        if text.strip().lower() == "clear":
+            clear_channel_settings()
+            await update.message.reply_text("✅ Majburiy kanal o'chirildi.")
+            return
+        lines = text.strip().split("\n")
+        if len(lines) >= 2:
+            uname = lines[0].strip()
+            link  = lines[1].strip()
+            save_channel_settings(uname, link)
+            await update.message.reply_text(
+                f"✅ <b>Kanal saqlandi!</b>\n\n📢 {uname}\n🔗 {link}",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await update.message.reply_text("❌ Ikkala qatorda yozing:\n1-qator: @kanal_username\n2-qator: https://t.me/kanal")
         return
 
     if action == "admin_chat_id":
-        try:
-            cid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri guruh ID!")
-            return
-        context.user_data["admin_chat_id"] = cid
-        context.user_data.pop("action", None)
+        context.user_data["action"] = "promote_user"
+        context.user_data["admin_chat_id"] = text.strip()
         await update.message.reply_text(
-            f"✅ Guruh tanlandi: <code>{cid}</code>\n\nNima qilmoqchisiz?",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➕ Admin qo'shish",   callback_data="ask_promote")],
-                [InlineKeyboardButton("➖ Admin o'chirish",  callback_data="ask_demote")],
-                [InlineKeyboardButton("🔙 Orqaga",           callback_data="admin_manage")],
-            ]))
+            f"👑 Guruh ID: <code>{text.strip()}</code>\n\nEndi foydalanuvchi ID sini yuboring:",
+            parse_mode=ParseMode.HTML
+        )
         return
 
     if action == "promote_user":
-        try:
-            uid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri foydalanuvchi ID!")
-            return
-        chat_id = context.user_data.get("admin_chat_id")
-        if not chat_id:
-            await update.message.reply_text("❌ Avval guruh ID sini kiriting.")
-            context.user_data.pop("action", None)
-            return
-        context.user_data["promote_uid"] = uid
         context.user_data.pop("action", None)
-        context.user_data["perm_selected"] = set(PERM_LABELS.keys())
-        await update.message.reply_text(
-            f"👑 <b>Admin huquqlarini tanlang</b>\n\n"
-            f"Guruh: <code>{chat_id}</code>\n"
-            f"Foydalanuvchi: <code>{uid}</code>\n\n"
-            f"✅ = beriladi  |  ☐ = berilmaydi\n"
-            f"Bosib yoqing/o'chiring, keyin <b>Tasdiqlash</b>ni bosing:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=get_perm_kb(context.user_data["perm_selected"], chat_id, uid))
-        return
-
-    if action == "demote_user":
+        chat_id = context.user_data.get("admin_chat_id")
         try:
             uid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri foydalanuvchi ID!")
-            return
-        chat_id = context.user_data.get("admin_chat_id")
-        if not chat_id:
-            await update.message.reply_text("❌ Avval guruh ID sini kiriting.")
-            context.user_data.pop("action", None)
-            return
-        try:
             await context.bot.promote_chat_member(
-                chat_id=chat_id, user_id=uid,
-                can_manage_chat=False, can_delete_messages=False,
-                can_restrict_members=False, can_invite_users=False,
-                can_pin_messages=False, can_manage_video_chats=False,
-                can_promote_members=False,
+                chat_id=int(chat_id), user_id=uid,
+                can_manage_chat=True, can_delete_messages=True,
+                can_restrict_members=True, can_invite_users=True,
             )
-            context.user_data.pop("action", None)
-            await update.message.reply_text(
-                f"✅ Foydalanuvchi <code>{uid}</code> guruh <code>{chat_id}</code>dan <b>ADMIN</b> olib tashlandi!",
-                parse_mode=ParseMode.HTML, reply_markup=admin_kb())
-        except TelegramError as e:
-            await update.message.reply_text(f"❌ Xato: <code>{e}</code>", parse_mode=ParseMode.HTML)
+            await update.message.reply_text(f"✅ <code>{uid}</code> admin qilindi!", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xato: {e}")
         return
 
     if action == "ban_user_chat_id":
-        try:
-            cid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri guruh ID!")
-            return
-        context.user_data["ban_chat_id"] = cid
         context.user_data["action"] = "ban_user_id"
+        context.user_data["ban_chat_id"] = text.strip()
         await update.message.reply_text(
-            f"🚫 <b>Ban — Guruh:</b> <code>{cid}</code>\n\nFoydalanuvchi <b>ID</b>sini yuboring:\n<i>💡 ID: @userinfobot</i>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="ban_user_menu")]]))
+            f"🚫 Guruh: <code>{text.strip()}</code>\n\nEndi ban qilinadigan foydalanuvchi ID sini yuboring:",
+            parse_mode=ParseMode.HTML
+        )
         return
 
     if action == "ban_user_id":
+        context.user_data.pop("action", None)
+        chat_id = context.user_data.get("ban_chat_id")
         try:
             uid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri foydalanuvchi ID!")
-            return
-        chat_id = context.user_data.get("ban_chat_id")
-        if not chat_id:
-            await update.message.reply_text("❌ Avval guruh ID sini kiriting.")
-            context.user_data.pop("action", None); return
-        try:
-            await context.bot.ban_chat_member(chat_id=chat_id, user_id=uid)
-            context.user_data.pop("action", None); context.user_data.pop("ban_chat_id", None)
-            await update.message.reply_text(
-                f"✅ <b>Foydalanuvchi BAN qilindi!</b>\n\n👤 User ID: <code>{uid}</code>\n🏠 Guruh ID: <code>{chat_id}</code>",
-                parse_mode=ParseMode.HTML, reply_markup=admin_kb())
-            logger.info(f"🚫 BAN: user={uid} chat={chat_id}")
-        except TelegramError as e:
-            err_str = str(e)
-            if "CHAT_ADMIN_REQUIRED" in err_str or "chat_admin_required" in err_str.lower():
-                await update.message.reply_text(
-                    "❌ <b>Xato:</b> Bot guruhda admin bo'lishi va <b>«Ban Users»</b> ruxsati bo'lishi kerak!",
-                    parse_mode=ParseMode.HTML)
-            else:
-                await update.message.reply_text(f"❌ Xato: <code>{e}</code>", parse_mode=ParseMode.HTML)
+            await context.bot.ban_chat_member(chat_id=int(chat_id), user_id=uid)
+            await update.message.reply_text(f"✅ <code>{uid}</code> ban qilindi!", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xato: {e}")
         return
 
     if action == "kick_user_chat_id":
-        try:
-            cid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri guruh ID!")
-            return
-        context.user_data["kick_chat_id"] = cid
         context.user_data["action"] = "kick_user_id"
+        context.user_data["kick_chat_id"] = text.strip()
         await update.message.reply_text(
-            f"👢 <b>Kick — Guruh:</b> <code>{cid}</code>\n\nFoydalanuvchi <b>ID</b>sini yuboring:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="kick_user_menu")]]))
+            f"👢 Guruh: <code>{text.strip()}</code>\n\nEndi kick qilinadigan foydalanuvchi ID sini yuboring:",
+            parse_mode=ParseMode.HTML
+        )
         return
 
     if action == "kick_user_id":
+        context.user_data.pop("action", None)
+        chat_id = context.user_data.get("kick_chat_id")
         try:
             uid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri foydalanuvchi ID!")
-            return
-        chat_id = context.user_data.get("kick_chat_id")
-        if not chat_id:
-            await update.message.reply_text("❌ Avval guruh ID sini kiriting.")
-            context.user_data.pop("action", None); return
-        try:
-            await context.bot.ban_chat_member(chat_id=chat_id, user_id=uid)
-            await context.bot.unban_chat_member(chat_id=chat_id, user_id=uid)
-            context.user_data.pop("action", None); context.user_data.pop("kick_chat_id", None)
-            await update.message.reply_text(
-                f"✅ <b>Foydalanuvchi KICK qilindi!</b>\n\n👤 User ID: <code>{uid}</code>\n🏠 Guruh ID: <code>{chat_id}</code>",
-                parse_mode=ParseMode.HTML, reply_markup=admin_kb())
-            logger.info(f"👢 KICK: user={uid} chat={chat_id}")
-        except TelegramError as e:
-            await update.message.reply_text(f"❌ Xato: <code>{e}</code>", parse_mode=ParseMode.HTML)
+            await context.bot.ban_chat_member(chat_id=int(chat_id), user_id=uid)
+            await asyncio.sleep(1)
+            await context.bot.unban_chat_member(chat_id=int(chat_id), user_id=uid)
+            await update.message.reply_text(f"✅ <code>{uid}</code> kick qilindi!", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xato: {e}")
         return
 
     if action == "unban_user_chat_id":
-        try:
-            cid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri guruh ID!")
-            return
-        context.user_data["unban_chat_id"] = cid
         context.user_data["action"] = "unban_user_id"
+        context.user_data["unban_chat_id"] = text.strip()
         await update.message.reply_text(
-            f"✅ <b>Unban — Guruh:</b> <code>{cid}</code>\n\nFoydalanuvchi <b>ID</b>sini yuboring:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="unban_user_menu")]]))
+            f"✅ Guruh: <code>{text.strip()}</code>\n\nEndi unban qilinadigan foydalanuvchi ID sini yuboring:",
+            parse_mode=ParseMode.HTML
+        )
         return
 
     if action == "unban_user_id":
+        context.user_data.pop("action", None)
+        chat_id = context.user_data.get("unban_chat_id")
         try:
             uid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri foydalanuvchi ID!")
-            return
-        chat_id = context.user_data.get("unban_chat_id")
-        if not chat_id:
-            await update.message.reply_text("❌ Avval guruh ID sini kiriting.")
-            context.user_data.pop("action", None); return
-        try:
-            await context.bot.unban_chat_member(chat_id=chat_id, user_id=uid, only_if_banned=True)
-            context.user_data.pop("action", None); context.user_data.pop("unban_chat_id", None)
-            await update.message.reply_text(
-                f"✅ <b>Foydalanuvchi UNBAN qilindi!</b>\n\n👤 User ID: <code>{uid}</code>\n🏠 Guruh ID: <code>{chat_id}</code>",
-                parse_mode=ParseMode.HTML, reply_markup=admin_kb())
-            logger.info(f"✅ UNBAN: user={uid} chat={chat_id}")
-        except TelegramError as e:
-            await update.message.reply_text(f"❌ Xato: <code>{e}</code>", parse_mode=ParseMode.HTML)
+            await context.bot.unban_chat_member(chat_id=int(chat_id), user_id=uid)
+            await update.message.reply_text(f"✅ <code>{uid}</code> unban qilindi!", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xato: {e}")
         return
 
     if action == "invite_disable_chat_id":
+        context.user_data.pop("action", None)
         try:
             cid = int(text.strip())
-        except ValueError:
-            await update.message.reply_text("❌ Noto'g'ri guruh ID!")
-            return
-        context.user_data.pop("action", None)
-        disabled = get_invite_disabled(cid)
-        new_state = not disabled
-        set_invite_disabled(cid, new_state)
-        state_text = "O'CHIRILDI ❌" if new_state else "YOQILDI ✅"
-        await update.message.reply_text(
-            f"🔗 Guruh <code>{cid}</code>da taklif funksiyasi <b>{state_text}</b>",
-            parse_mode=ParseMode.HTML, reply_markup=admin_kb())
+            current = get_invite_disabled(cid)
+            set_invite_disabled(cid, not current)
+            state = "O'CHIRILDI ❌" if not current else "YOQILDI ✅"
+            await update.message.reply_text(
+                f"🔗 Guruh <code>{cid}</code> uchun taklif: <b>{state}</b>",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as e:
+            await update.message.reply_text(f"❌ Xato: {e}")
         return
 
 
+async def on_callback_invite_manage(update_or_query, context):
+    """Taklif boshqaruvi — tugma yoki matn orqali"""
+    groups = get_all_groups()
+    active_groups = [(g[0], g[1]) for g in groups if g[5] == 0]
+    text = "🔗 <b>Taklif Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
+    text += "✅ = taklif YOQIQ  |  ❌ = taklif O'CHIQ\n\n"
+    rows = []
+    for cid, title in active_groups[:8]:
+        inv_off = get_invite_disabled(cid)
+        icon = "❌" if inv_off else "✅"
+        rows.append([InlineKeyboardButton(f"{icon} {title[:25]}", callback_data=f"inv_toggle_{cid}")])
+    rows.append([InlineKeyboardButton("📝 ID kiritish", callback_data="inv_enter_id")])
+    rows.append([InlineKeyboardButton("🔙 Orqaga",      callback_data="back_admin")])
+    if hasattr(update_or_query, 'message'):
+        await update_or_query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+    else:
+        await update_or_query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+
+
 # ═══════════════════════════════════════════════════════
-#   🔘 CALLBACK HANDLER
+#   🔘 CALLBACK QUERY HANDLER
 # ═══════════════════════════════════════════════════════
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q        = update.callback_query
+    q = update.callback_query
+    if not q: return
     await q.answer()
-    d        = q.data
-    uid      = q.from_user.id
-    bot_info = await context.bot.get_me()
+    d = q.data or ""
+    user = q.from_user
 
-    # ── Taklif tugmasi (hamma uchun) ──
+    # ── Musiqa izlash ──
+    if d == "music_search":
+        waiting_for_music[user.id] = True
+        await q.message.reply_text(
+            "🎵 <b>Qo'shiq nomini yozing:</b>\n\n"
+            "📝 <i>Misol: Ulug'bek Rahmatullayev</i>\n"
+            "🔗 <i>Yoki YouTube URL ham ishlaydi</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # ── Taklif tugmasi ──
     if d.startswith("invite_"):
-        gid = int(d.split("_")[1])
+        gid = int(d.split("_", 1)[1])
         await handle_invite_button(q, context, gid)
         return
 
-    # ── Obuna tekshirish — taklif uchun ──
+    # ── Obuna tekshirish ──
     if d.startswith("check_sub_"):
-        gid  = int(d.split("_")[2])
-        user = q.from_user
-        subscribed = await check_subscription(context.bot, user.id)
-        if subscribed:
-            await q.answer("✅ Obuna tasdiqlandi!", show_alert=False)
-            await handle_invite_button(q, context, gid)
+        gid = int(d.split("_")[-1])
+        ch_username, ch_link = get_channel_settings()
+        is_sub = await check_subscription(context.bot, user.id)
+        if is_sub:
+            await q.edit_message_text(
+                f"✅ <b>{user.first_name}, obuna tasdiqlandi!</b>\n\n"
+                "Endi guruhda do'st taklif qilishingiz mumkin! 🎉",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("➕ Do'st taklif qilish", callback_data=f"invite_{gid}")],
+                ])
+            )
         else:
-            await q.answer("❌ Siz hali obuna bo'lmadingiz!", show_alert=True)
+            await q.answer("❌ Siz hali obuna bo'lmagansiz!", show_alert=True)
         return
 
-    # ── Guruhda yozish uchun obuna tekshirish ──
+    # ── Guruhda yozish — obuna tekshirish ──
     if d.startswith("check_write_sub_"):
-        chat_id = int(d.split("_")[3])
-        user = q.from_user
-        subscribed = await check_subscription(context.bot, user.id)
-        if subscribed:
-            await q.answer("✅ Obuna tasdiqlandi! Endi yoza olasiz.", show_alert=True)
-            try: await q.message.delete()
-            except Exception: pass
+        chat_id = int(d.split("_")[-1])
+        is_sub = await check_subscription(context.bot, user.id)
+        if is_sub:
+            await q.edit_message_text(
+                f"✅ <b>{user.first_name}, obuna tasdiqlandi!</b>\n\nEndi guruhda yozishingiz mumkin! 🎉",
+                parse_mode=ParseMode.HTML
+            )
         else:
-            await q.answer("❌ Hali obuna bo'lmadingiz!", show_alert=True)
-        return
-
-    # ── Contact / How ──
-    if d == "contact_admin":
-        await q.edit_message_text(
-            "🆘 <b>Adminga murojaat</b>\n\n📩 Quyidagi tugmani bosing:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📩 Adminga yozish", url=f"tg://user?id={ADMIN_IDS[0]}")],
-                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_user")],
-            ]))
-        return
-
-    if d == "back_user":
-        await q.edit_message_text(
-            f"✨ <b>🤖 {BOT_NAME}</b>\n\n👇 Tanlang:",
-            parse_mode=ParseMode.HTML, reply_markup=user_kb(bot_info.username))
-        return
-
-    if d == "how_to_add":
-        await q.edit_message_text(
-            "📖 <b>Botni guruhga qo'shish</b>\n\n"
-            "1️⃣ «Guruhga qo'shish» tugmasini bosing\n"
-            "2️⃣ Ro'yxatdan guruhingizni tanlang\n"
-            "3️⃣ Tasdiqlang\n"
-            "4️⃣ Guruh sozlamalari → Adminlar → Botni toping\n"
-            "5️⃣ <b>Barcha ruxsatlarni bering</b>\n\n"
-            "✅ Tayyor!",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➕ Guruhga qo'shish",
-                                     url=f"https://t.me/{bot_info.username}?startgroup=true")],
-                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_user")],
-            ]))
-        return
-
-    # ── Jonli efir yoqish/o'chirish (to'g'ridan-to'g'ri) ──
-    if d.startswith("ls_on_"):
-        cid = int(d.split("_")[2])
-        set_livestream(cid, True)
-        await q.edit_message_text(
-            f"📡 <b>Jonli efir YOQILDI!</b>\n\nGuruh: <code>{cid}</code>\n\n✅ Ovozli/video xabarlar bloklanadi.",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("⏹ O'chirish",  callback_data=f"ls_off_{cid}")],
-                [InlineKeyboardButton("🔙 Orqaga",    callback_data="livestream_menu")],
-            ]))
-        try:
-            await context.bot.send_message(cid,
-                "📡 <b>Jonli efir rejimi YOQILDI! 🔴</b>\n\nOvozli va video xabar yuborish vaqtincha taqiqlangan.",
-                parse_mode=ParseMode.HTML)
-        except Exception: pass
-        return
-
-    if d.startswith("ls_off_"):
-        cid = int(d.split("_")[2])
-        set_livestream(cid, False)
-        await q.edit_message_text(
-            f"📡 <b>Jonli efir O'CHIRILDI!</b>\n\nGuruh: <code>{cid}</code>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("▶️ Yoqish",    callback_data=f"ls_on_{cid}")],
-                [InlineKeyboardButton("🔙 Orqaga",    callback_data="livestream_menu")],
-            ]))
-        try:
-            await context.bot.send_message(cid,
-                "📡 <b>Jonli efir rejimi O'CHIRILDI.</b>\nEndi ovozli xabar yuborishingiz mumkin.",
-                parse_mode=ParseMode.HTML)
-        except Exception: pass
-        return
-
-    # ── Jonli efir toggle ──
-    if d.startswith("ls_toggle_"):
-        cid = int(d.split("_")[2])
-        new_status = not get_livestream_status(cid)
-        set_livestream(cid, new_status)
-        icon = "🔴 YOQILDI" if new_status else "⚫ O'CHIRILDI"
-        await q.answer(f"📡 Jonli efir {icon}!", show_alert=True)
-        try:
-            await context.bot.send_message(cid, f"📡 <b>Jonli efir {icon}!</b>", parse_mode=ParseMode.HTML)
-        except Exception: pass
-        groups = get_all_groups()
-        active_ls = [(g[0], g[1]) for g in groups if g[5] == 0]
-        rows = []
-        for gcid, title in active_ls[:8]:
-            ls_on = get_livestream_status(gcid)
-            icon2 = "🔴" if ls_on else "⚫"
-            rows.append([InlineKeyboardButton(f"{icon2} {title[:25]}", callback_data=f"ls_toggle_{gcid}")])
-        rows.append([InlineKeyboardButton("📝 ID kiritish", callback_data="ls_enter_id")])
-        rows.append([InlineKeyboardButton("🔙 Orqaga",      callback_data="back_admin")])
-        try:
-            await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(rows))
-        except Exception: pass
+            await q.answer("❌ Siz hali obuna bo'lmagansiz!", show_alert=True)
         return
 
     # ── Taklif toggle ──
     if d.startswith("inv_toggle_"):
-        cid = int(d.split("_")[2])
-        new_state = not get_invite_disabled(cid)
-        set_invite_disabled(cid, new_state)
-        state_text = "O'CHIRILDI ❌" if new_state else "YOQILDI ✅"
-        await q.answer(f"🔗 Taklif {state_text}!", show_alert=True)
-        groups = get_all_groups()
-        active_groups = [(g[0], g[1]) for g in groups if g[5] == 0]
-        rows = []
-        for gcid, title in active_groups[:8]:
-            inv_off = get_invite_disabled(gcid)
-            icon = "❌" if inv_off else "✅"
-            rows.append([InlineKeyboardButton(f"{icon} {title[:25]}", callback_data=f"inv_toggle_{gcid}")])
-        rows.append([InlineKeyboardButton("📝 ID kiritish", callback_data="inv_enter_id")])
-        rows.append([InlineKeyboardButton("🔙 Orqaga",      callback_data="back_admin")])
-        try:
-            await q.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(rows))
-        except Exception: pass
+        cid = int(d.split("_")[-1])
+        current = get_invite_disabled(cid)
+        set_invite_disabled(cid, not current)
+        state = "O'CHIRILDI ❌" if not current else "YOQILDI ✅"
+        await q.answer(f"Taklif {state}")
+        await on_callback_invite_manage(q, context)
         return
 
-    # ── Admin huquq toggle ──
-    if d.startswith("perm_toggle_"):
-        rest = d[len("perm_toggle_"):]
-        tokens = rest.rsplit("_", 2)
-        key_name = tokens[0]
-        try:
-            perm_chat_id = int(tokens[1])
-            perm_user_id = int(tokens[2])
-        except Exception:
-            await q.answer("Xato!", show_alert=True); return
-        selected = context.user_data.get("perm_selected", set(PERM_LABELS.keys()))
-        if key_name in selected:
-            selected.discard(key_name)
-        else:
-            selected.add(key_name)
-        context.user_data["perm_selected"] = selected
-        try:
-            await q.edit_message_reply_markup(reply_markup=get_perm_kb(selected, perm_chat_id, perm_user_id))
-        except Exception: pass
-        return
-
-    if d.startswith("perm_confirm_"):
-        rest = d[len("perm_confirm_"):]
-        tokens = rest.rsplit("_", 1)
-        try:
-            perm_chat_id = int(tokens[0])
-            perm_user_id = int(tokens[1])
-        except Exception:
-            await q.answer("Xato!", show_alert=True); return
-        selected = context.user_data.get("perm_selected", set())
-        kwargs = {k: (k in selected) for k in PERM_LABELS.keys() if k != "is_anonymous"}
-        kwargs["is_anonymous"] = "is_anonymous" in selected
-        try:
-            await context.bot.promote_chat_member(chat_id=perm_chat_id, user_id=perm_user_id, **kwargs)
-            context.user_data.pop("perm_selected", None)
-            context.user_data.pop("promote_uid", None)
-            perms_given = [PERM_LABELS[k] for k in selected]
-            perms_text  = "\n".join(f"  ✅ {p}" for p in perms_given) if perms_given else "  (hech qanday)"
-            await q.edit_message_text(
-                f"✅ <b>Admin qo'shildi!</b>\n\n"
-                f"👤 User: <code>{perm_user_id}</code>\n"
-                f"🏠 Guruh: <code>{perm_chat_id}</code>\n\n"
-                f"<b>Berilgan huquqlar:</b>\n{perms_text}",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]))
-            logger.info(f"👑 PROMOTE: user={perm_user_id} chat={perm_chat_id} perms={selected}")
-        except TelegramError as e:
-            err_str = str(e)
-            if "CHAT_ADMIN_REQUIRED" in err_str or "chat_admin_required" in err_str.lower():
-                await q.edit_message_text(
-                    "❌ <b>Xato: Chat_admin_required</b>\n\n"
-                    "Bot guruhda admin bo'lishi va <b>«Add New Admins»</b> ruxsati bo'lishi kerak!",
-                    parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_manage")]]))
-            else:
-                await q.edit_message_text(f"❌ Xato: <code>{e}</code>", parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="admin_manage")]]))
-        return
-
-    # ── Faqat admin uchun quyidagilar ──
-    if not is_admin(uid):
-        await q.answer("❌ Ruxsat yo'q!", show_alert=True)
-        return
-
-    if d == "check_user_menu":
-        context.user_data["action"] = "check_user"
+    if d == "inv_enter_id":
+        context.user_data["action"] = "invite_disable_chat_id"
         await q.edit_message_text(
-            "🔍 <b>Foydalanuvchi tekshirish</b>\n\n"
-            "Foydalanuvchi <b>ID</b>sini yuboring:\n"
-            "<i>Misol: 123456789</i>\n\n"
-            "💡 ID bilish uchun @userinfobot ga yozing",
+            "🔗 <b>Taklif boshqaruv — Guruh ID kiriting</b>\n\n"
+            "Guruh ID sini yuboring:\n<i>Misol: -1001234567890</i>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")
-            ]])
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="invite_manage_menu")]]))
+        return
+
+    # ── Admin panel tugmalari ──
+    if d == "back_admin" or d == "settings":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
+        await q.edit_message_text(
+            "⚙️ <b>Admin Panel</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=admin_kb()
         )
         return
 
-    if d == "cancel_action":
-        context.user_data.pop("action", None)
-        await q.edit_message_text("✅ Bekor qilindi.", reply_markup=admin_kb())
-        return
-
     if d == "stats":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
         active, banned, total, today = get_stats()
         groups = get_active_groups()
         channels = get_all_channels()
@@ -1776,180 +1592,139 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔔 Majburiy kanal:     <b>{ch_username if ch_username else 'Yoq'}</b>\n\n"
             f"🕐 <i>{datetime.now().strftime('%Y-%m-%d %H:%M')}</i>",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")]]))
-        return
-
-    if d == "settings":
-        groups = get_active_groups()
-        channels = get_all_channels()
-        ch_username, _ = get_channel_settings()
-        await q.edit_message_text(
-            "⚙️ <b>Bot Sozlamalari</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"🤖 Bot nomi:           <b>{BOT_NAME}</b>\n"
-            f"👑 Adminlar:           <b>{len(ADMIN_IDS)}</b>\n"
-            f"💬 Kalit so'zlar:      <b>{len(RESPONSES)}</b>\n\n"
-            f"📢 Taklif xabari:      <b>har {INVITE_INTERVAL} sek</b>\n"
-            f"👥 Yozish uchun:       <b>{REQUIRED_INVITES} ta do'st taklif</b>\n"
-            f"🔇 Mute muddati:       <b>{MUTE_DURATION} daqiqa</b>\n"
-            f"🏠 Faol guruhlar:      <b>{len(groups)} ta</b>\n"
-            f"📢 Kuzatilgan kanallar:<b>{len(channels)} ta</b>\n"
-            f"🔔 Majburiy kanal:     <b>{ch_username if ch_username else 'Ornatilmagan'}</b>\n\n"
-            "⚡ Barcha funksiyalar faol!",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")]]))
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]))
         return
 
     if d.startswith("groups_"):
-        page   = int(d.split("_")[1])
-        groups = [g for g in get_all_groups() if g[5] == 0]
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
+        page = int(d.split("_")[1])
+        all_g = get_all_groups()
         per_page = 5
-        pg = groups[page * per_page:(page + 1) * per_page]
-        text = f"👥 <b>Faol Guruhlar</b> — {len(groups)} ta\n━━━━━━━━━━━━━━━━━━━━\n\n" if groups else "👥 Faol guruh yo'q."
-        for g in pg:
-            cid, title, uname, _, added, _, _ = g
-            un = f"@{uname}" if uname else "—"
-            inv_off    = get_invite_disabled(cid)
-            ls_on      = get_livestream_status(cid)
-            inv_status = "❌ O'chiq" if inv_off else "✅ Yoqiq"
-            ls_status  = "🔴 Yoqiq" if ls_on  else "⚫ O'chiq"
-            text += (
-                f"📌 <b>{title}</b>\n"
-                f"   🆔 <code>{cid}</code>  {un}\n"
-                f"   📅 {added}\n"
-                f"   🔗 Taklif: {inv_status}  📡 Efir: {ls_status}\n\n"
-            )
+        start = page * per_page
+        end   = start + per_page
+        chunk = all_g[start:end]
+        lines = [f"👥 <b>Guruhlar ({start+1}-{min(end, len(all_g))} / {len(all_g)})</b>\n━━━━━━━━━━━━━━━━━━━━\n"]
+        for g in chunk:
+            ban_str = " 🚫" if g[5] else ""
+            un = f"@{g[2]}" if g[2] else "—"
+            lines.append(f"📌 <b>{g[1]}</b>{ban_str}\n   🆔 <code>{g[0]}</code>  {un}\n")
+        rows = []
         nav = []
         if page > 0:
             nav.append(InlineKeyboardButton("⬅️", callback_data=f"groups_{page-1}"))
-        if (page + 1) * per_page < len(groups):
+        if end < len(all_g):
             nav.append(InlineKeyboardButton("➡️", callback_data=f"groups_{page+1}"))
-        rows = []
         if nav: rows.append(nav)
-        rows += [
-            [InlineKeyboardButton("🚫 Guruh taqiqlash", callback_data="ask_ban")],
-            [InlineKeyboardButton("🔙 Orqaga",          callback_data="back_admin")],
-        ]
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        rows.append([InlineKeyboardButton("🔙 Panel", callback_data="back_admin")])
+        await q.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
         return
 
     if d == "banned":
-        groups = [g for g in get_all_groups() if g[5] == 1]
-        text = f"🚫 <b>Taqiqlangan</b> — {len(groups)} ta\n\n" if groups else "✅ Taqiqlangan guruh yo'q!"
-        for g in groups:
-            cid, title, _, _, _, _, reason = g
-            text += f"🔴 <b>{title}</b>\n   <code>{cid}</code>\n   📝 {reason or '—'}\n\n"
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("✅ Tiklash", callback_data="ask_unban")],
-                [InlineKeyboardButton("🔙 Orqaga",  callback_data="back_admin")],
-            ]))
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
+        conn = get_db(); c = conn.cursor()
+        c.execute("SELECT chat_id, title, ban_reason FROM groups WHERE is_banned=1")
+        banned_g = c.fetchall(); conn.close()
+        if not banned_g:
+            await q.edit_message_text("✅ Taqiqlangan guruhlar yo'q.",
+                reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]))
+            return
+        lines = ["🚫 <b>Taqiqlangan guruhlar</b>\n━━━━━━━━━━━━━━━━━━━━\n"]
+        for cid, title, reason in banned_g:
+            lines.append(f"📌 <b>{title}</b>\n   🆔 <code>{cid}</code>\n   Sabab: {reason or '—'}\n")
+        await q.edit_message_text("\n".join(lines), parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]))
         return
 
-    if d == "broadcast_ask":
-        context.user_data["action"] = "broadcast"
-        groups = [g for g in get_all_groups() if g[5] == 0]
+    if d == "check_user_menu":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
+        context.user_data["action"] = "check_user"
         await q.edit_message_text(
-            f"📢 <b>Broadcast</b>\n\nGuruhlar: <b>{len(groups)}</b>\n\n✍️ Xabarni yozing:",
+            "🔍 <b>Foydalanuvchi tekshirish</b>\n\nFoydalanuvchi ID sini yuboring:",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
         return
 
-    if d == "ask_ban":
-        context.user_data["action"] = "ban_id"
+    if d == "broadcast_ask":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
+        context.user_data["action"] = "broadcast"
         await q.edit_message_text(
-            "🚫 Guruh <b>ID</b>sini yuboring:\n<i>Misol: -1001234567890</i>",
+            "📢 <b>Broadcast</b>\n\nBarcha guruhlarga yuboriladigan xabarni yozing:",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="groups_0")]]))
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
         return
 
-    if d == "ask_unban":
-        context.user_data["action"] = "unban_id"
+    if d == "cancel_action":
+        context.user_data.pop("action", None)
+        await q.edit_message_text("❌ Bekor qilindi.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]))
+        return
+
+    if d == "how_to_add":
+        bot_info = await context.bot.get_me()
         await q.edit_message_text(
-            "✅ Tiklanadigan guruh <b>ID</b>sini yuboring:",
+            "❓ <b>Botni guruhga qo'shish</b>\n\n"
+            "1️⃣ Guruhingizga kiring\n"
+            "2️⃣ Guruh nomini bosing → A'zolar\n"
+            "3️⃣ A'zo qo'shish → Botni izlang\n"
+            f"4️⃣ <b>@{bot_info.username}</b> ni tanlang\n"
+            "5️⃣ Botni <b>ADMIN</b> qiling!",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="banned")]]))
-        return
-
-    if d == "back_admin":
-        active, banned, total, today = get_stats()
-        await q.edit_message_text(
-            f"🛠 <b>Admin Panel</b> — {BOT_NAME}\n\n"
-            f"✅ Faol: <b>{active}</b>  •  🚫 Taqiqlangan: <b>{banned}</b>  •  💬 Xabarlar: <b>{total}</b>",
-            parse_mode=ParseMode.HTML, reply_markup=admin_kb())
-        return
-
-    # ══ KANAL BOSHQARUVI ══
-    if d == "channel_manage":
-        ch_username, ch_link = get_channel_settings()
-        status_text = (
-            f"✅ <b>Faol kanal:</b> {ch_username}\n🔗 {ch_link}" if ch_username
-            else "❌ <b>Kanal o'rnatilmagan</b>"
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Guruhga qo'shish", url=f"https://t.me/{bot_info.username}?startgroup=true")],
+                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_to_start")],
+            ])
         )
+        return
+
+    if d == "contact_admin":
+        admin_id = ADMIN_IDS[0] if ADMIN_IDS else None
+        if admin_id:
+            try:
+                admin_info = await context.bot.get_chat(admin_id)
+                admin_username = f"@{admin_info.username}" if admin_info.username else f"ID: {admin_id}"
+            except Exception:
+                admin_username = f"ID: {admin_id}"
+        else:
+            admin_username = "Admin mavjud emas"
+        await q.answer(f"Admin: {admin_username}", show_alert=True)
+        return
+
+    if d == "back_to_start":
+        bot_info = await context.bot.get_me()
         await q.edit_message_text(
-            f"🔔 <b>Kanal Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n{status_text}\n\n👇 Amalni tanlang:",
+            f"✨ <b>Assalomu alaykum!</b>\n\n🤖 Men <b>{BOT_NAME}</b>man!\n\n👇 Tanlang:",
             parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➕ Kanal o'rnatish / o'zgartirish", callback_data="channel_set")],
-                [InlineKeyboardButton("🗑 Kanalni o'chirish",              callback_data="channel_clear")],
-                [InlineKeyboardButton("🔙 Orqaga",                         callback_data="back_admin")],
-            ]))
+            reply_markup=user_kb(bot_info.username)
+        )
         return
 
-    if d == "channel_set":
-        context.user_data["action"] = "set_channel"
-        await q.edit_message_text(
-            "📢 <b>Kanal o'rnatish</b>\n\nKanal username'ini yuboring:\n<i>Misol: @mening_kanalim</i>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="channel_manage")]]))
+    if d == "invite_manage_menu":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
+        await on_callback_invite_manage(q, context)
         return
 
-    if d == "channel_clear":
-        clear_channel_settings()
-        await q.edit_message_text(
-            "🗑 <b>Kanal o'chirildi!</b>\n\nEndi obuna tekshiruvi o'chiq.",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("🔙 Kanal menyu", callback_data="channel_manage")],
-                [InlineKeyboardButton("🏠 Bosh sahifa",  callback_data="back_admin")],
-            ]))
-        return
-
-    # ══ JONLI EFIR MENYU ══
-    if d == "livestream_menu":
-        groups = get_all_groups()
-        active_ls = [(g[0], g[1]) for g in groups if g[5] == 0]
-        text = "📡 <b>Jonli Efir Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        text += "🔴 = YOQIQ  |  ⚫ = O'CHIQ\n\n"
-        rows = []
-        for cid, title in active_ls[:8]:
-            ls_on = get_livestream_status(cid)
-            icon  = "🔴" if ls_on else "⚫"
-            rows.append([InlineKeyboardButton(f"{icon} {title[:25]}", callback_data=f"ls_toggle_{cid}")])
-        rows.append([InlineKeyboardButton("📝 ID kiritish", callback_data="ls_enter_id")])
-        rows.append([InlineKeyboardButton("🔙 Orqaga",      callback_data="back_admin")])
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
-        return
-
-    if d == "ls_enter_id":
-        context.user_data["action"] = "livestream_set_chat"
-        await q.edit_message_text(
-            "📡 <b>Jonli Efir — Guruh ID kiriting</b>\n\n<i>Misol: -1001234567890</i>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="livestream_menu")]]))
-        return
-
-    # ══ ADMIN BOSHQARUV ══
+    # ── Admin manage ──
     if d == "admin_manage":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
         await q.edit_message_text(
-            "👑 <b>Admin Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-            "Bot orqali guruhga admin qo'shish yoki o'chirish.\n\n"
-            "⚠️ Bot o'zi guruhda <b>Admin</b> bo'lishi kerak!\n"
-            "Ruxsat: <b>Promote Members</b> ✅",
+            "👑 <b>Admin boshqaruvi</b>",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("📝 Guruh ID kiriting", callback_data="ask_admin_chat")],
-                [InlineKeyboardButton("🔙 Orqaga",            callback_data="back_admin")],
-            ]))
+                [InlineKeyboardButton("➕ Admin qo'shish", callback_data="ask_admin_chat")],
+                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")],
+            ])
+        )
         return
 
     if d == "ask_admin_chat":
@@ -1970,16 +1745,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]]))
         return
 
-    if d == "ask_demote":
-        context.user_data["action"] = "demote_user"
-        chat_id = context.user_data.get("admin_chat_id", "?")
-        await q.edit_message_text(
-            f"➖ <b>Admin o'chirish</b>\n\nGuruh: <code>{chat_id}</code>\n\nFoydalanuvchi <b>ID</b>sini yuboring:",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]]))
-        return
-
-    # ══ BAN/KICK/UNBAN USER MENYULARI ══
+    # ── Ban/Kick/Unban ──
     if d == "ban_user_menu":
         await q.edit_message_text(
             "🚫 <b>Foydalanuvchini Ban qilish</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -2037,29 +1803,68 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="unban_user_menu")]]))
         return
 
-    # ══ TAKLIF BOSHQARUVI ══
-    if d == "invite_manage_menu":
+    # ── Livestream ──
+    if d == "livestream_menu":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
         groups = get_all_groups()
         active_groups = [(g[0], g[1]) for g in groups if g[5] == 0]
-        text = "🔗 <b>Taklif Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-        text += "✅ = taklif YOQIQ  |  ❌ = taklif O'CHIQ\n\n"
         rows = []
         for cid, title in active_groups[:8]:
-            inv_off = get_invite_disabled(cid)
-            icon = "❌" if inv_off else "✅"
-            rows.append([InlineKeyboardButton(f"{icon} {title[:25]}", callback_data=f"inv_toggle_{cid}")])
-        rows.append([InlineKeyboardButton("📝 ID kiritish", callback_data="inv_enter_id")])
-        rows.append([InlineKeyboardButton("🔙 Orqaga",      callback_data="back_admin")])
-        await q.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+            status_icon = "🔴" if get_livestream_status(cid) else "⚫"
+            rows.append([InlineKeyboardButton(f"{status_icon} {title[:25]}", callback_data=f"ls_toggle_{cid}")])
+        rows.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")])
+        await q.edit_message_text(
+            "📡 <b>Jonli efir boshqaruvi</b>\n\n🔴 = yoqilgan  |  ⚫ = o'chirilgan",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(rows)
+        )
         return
 
-    if d == "inv_enter_id":
-        context.user_data["action"] = "invite_disable_chat_id"
-        await q.edit_message_text(
-            "🔗 <b>Taklif boshqaruv — Guruh ID kiriting</b>\n\n"
-            "Guruh ID sini yuboring (taklif holati almashtiriladi):\n<i>Misol: -1001234567890</i>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="invite_manage_menu")]]))
+    if d.startswith("ls_toggle_"):
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
+        cid = int(d.split("_")[-1])
+        current = get_livestream_status(cid)
+        set_livestream(cid, not current)
+        state = "YOQILDI 🔴" if not current else "O'CHIRILDI ⚫"
+        await q.answer(f"Jonli efir {state}")
+        return
+
+    # ─ Perm toggle ──
+    if d.startswith("perm_toggle_"):
+        parts = d.split("_")
+        key = "_".join(parts[2:-2])
+        try:
+            chat_id_p = int(parts[-2])
+            uid_p = int(parts[-1])
+        except Exception:
+            return
+        selected = context.user_data.get("perm_selected", set())
+        if key in selected:
+            selected.discard(key)
+        else:
+            selected.add(key)
+        context.user_data["perm_selected"] = selected
+        await q.edit_message_reply_markup(reply_markup=get_perm_kb(selected, chat_id_p, uid_p))
+        return
+
+    if d.startswith("perm_confirm_"):
+        parts = d.split("_")
+        try:
+            chat_id_p = int(parts[-2])
+            uid_p = int(parts[-1])
+        except Exception:
+            return
+        selected = context.user_data.get("perm_selected", set())
+        perms = {k: (k in selected) for k in PERM_LABELS}
+        try:
+            await context.bot.promote_chat_member(chat_id=chat_id_p, user_id=uid_p, **perms)
+            await q.edit_message_text(f"✅ Admin huquqlari saqlandi! ID: <code>{uid_p}</code>", parse_mode=ParseMode.HTML)
+        except Exception as e:
+            await q.edit_message_text(f"❌ Xato: {e}")
         return
 
 
@@ -2073,6 +1878,9 @@ def main():
     # Commandlar
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("panel",  cmd_panel))
+    app.add_handler(CommandHandler("play",   cmd_play))      # 🎵 MUSIQA
+    app.add_handler(CommandHandler("music",  cmd_play))      # 🎵 /music ham ishlaydi
+    app.add_handler(CommandHandler("help",   cmd_play))      # /help — play ga yo'naltirish
 
     # Bot guruh/kanalga qo'shilganda
     app.add_handler(ChatMemberHandler(track_bot,               ChatMemberHandler.MY_CHAT_MEMBER))
@@ -2084,7 +1892,7 @@ def main():
     # Callback tugmalar
     app.add_handler(CallbackQueryHandler(on_callback))
 
-    # Admin private xabarlar
+    # Admin private xabarlar (va oddiy foydalanuvchi musiqa izlashi)
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
         handle_admin_pm
@@ -2105,12 +1913,13 @@ def main():
     app.job_queue.run_repeating(send_group_invite_message, interval=INVITE_INTERVAL, first=30)
 
     ch_username, _ = get_channel_settings()
-    logger.info("=" * 60)
-    logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI! (Birlashtirilgan v1)")
+    logger.info("=" * 65)
+    logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI! (Birlashtirilgan v2 + Musiqa)")
+    logger.info(f"🎵 Musiqa buyruq:       /play [nom]")
     logger.info(f"🔔 Majburiy kanal:      {ch_username or 'Ornatilmagan'}")
     logger.info(f"👥 Yozish uchun taklif: {REQUIRED_INVITES} ta do'st")
     logger.info(f"🔇 Mute muddati:        {MUTE_DURATION} daqiqa")
-    logger.info("=" * 60)
+    logger.info("=" * 65)
 
     app.run_polling(allowed_updates=Update.ALL_TYPES)
 
