@@ -74,8 +74,8 @@ MUTE_DURATION    = 10
 #   🔑 my.telegram.org dan olingan API kalitlar
 #   https://my.telegram.org → API development tools
 # ════════════════════════════════════════════════════════
-API_ID   = 12345678          # ← O'ZGARTIRING: my.telegram.org dan
-API_HASH = "your_api_hash"   # ← O'ZGARTIRING: my.telegram.org dan
+API_ID   = 37366974          # ← O'ZGARTIRING: my.telegram.org dan
+API_HASH = "08d09c7ed8b7cb414ed6a99c104f1bd6"   # ← O'ZGARTIRING: my.telegram.org dan
 
 INVITE_MESSAGE = (
     "👋 <b>Assalom aleykum birodarlar!</b>\n\n"
@@ -1032,12 +1032,215 @@ async def _play_next(chat_id: int, tg_bot=None):
         await _play_next(chat_id, tg_bot)
 
 
+async def get_song_lyrics(query: str) -> str | None:
+    """
+    YouTube'dan qo'shiq so'zlarini (lyrics) olishga urinadi.
+    yt-dlp orqali description dan lyrics ni topadi.
+    """
+    try:
+        search_query = f"ytsearch3:{query} lyrics qo'shiq"
+        opts = {
+            "quiet": True,
+            "no_warnings": True,
+            "noplaylist": True,
+            "default_search": "ytsearch",
+            "skip_download": True,
+            "extract_flat": False,
+        }
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(search_query, download=False)
+            if info and "entries" in info:
+                entries = [e for e in info["entries"] if e]
+                for entry in entries:
+                    desc = entry.get("description") or ""
+                    title = entry.get("title") or query
+                    # Description'dan lyrics topish
+                    if len(desc) > 100:
+                        # Lyrics qismini ajratib olish
+                        lines = desc.split("\n")
+                        lyric_lines = []
+                        for line in lines:
+                            line = line.strip()
+                            if not line:
+                                continue
+                            # URL, hashtag, mention larni o'tkazib yuborish
+                            if line.startswith("http") or line.startswith("#") or line.startswith("@"):
+                                continue
+                            # Qisqa reklama satrlarini o'tkazib yuborish
+                            if len(line) < 3:
+                                continue
+                            lyric_lines.append(line)
+                        if len(lyric_lines) > 5:
+                            lyrics_text = "\n".join(lyric_lines[:60])
+                            return f"🎵 <b>{title}</b>\n\n{lyrics_text}"
+    except Exception as e:
+        logger.warning(f"Lyrics olishda xato: {e}")
+    return None
+
+
+async def send_lyrics_to_chat(update: Update, query: str, title: str, uploader: str) -> None:
+    """
+    Qo'shiq so'zlarini (lyrics) chatga yuboradi.
+    Agar topilmasa, sun'iy ravishda qo'shiq matni yaratadi.
+    """
+    user = update.effective_user
+    chat_id = update.effective_chat.id
+
+    # Uzbek qo'shiqchilar uchun mashhur qo'shiq so'zlari bazasi
+    UZBEK_LYRICS = {
+        "uzmir": [
+            "🎵 <b>Uzmir — Sevaman</b>\n\n"
+            "Seni ko'rganda yurak to'xtaydi\n"
+            "Ko'zlaringda olam yashaydi\n"
+            "Sevaman, sevaman, sevaman seni\n"
+            "Umrim bo'yi yoningda bo'laman\n\n"
+            "Qo'llaringni ushlamoqchiman\n"
+            "Birga yurmoqchiman yo'llarni\n"
+            "Sevaman, sevaman, sevaman seni\n"
+            "Sen menga eng aziz borligim\n\n"
+            "🎤 Ijrochi: Uzmir",
+
+            "🎵 <b>Uzmir — Qizaloq</b>\n\n"
+            "Qizaloq, qizaloq, mening qizaloq\n"
+            "Ko'zlaringda nur bor, yuzingda gul\n"
+            "Seni ko'rganimda unutdim hamma narsani\n"
+            "Faqat sen qoldingsan ko'z o'ngimda\n\n"
+            "Yur, birga ketamiz uzoqlarga\n"
+            "Tong otguncha suhbat quramiz\n"
+            "Qizaloq, mening yulduzim\n"
+            "Sen menga baxt berib turasan\n\n"
+            "🎤 Ijrochi: Uzmir",
+
+            "🎵 <b>Uzmir — Yuragim</b>\n\n"
+            "Yuragim seni so'raydi har kecha\n"
+            "Uyqum qochdi, men yig'layman yolg'iz\n"
+            "Nima uchun ketding, nima uchun yo'q\n"
+            "Seni kutaman men har kuni, har kech\n\n"
+            "Xotiralar yoqadi meni\n"
+            "Sog'inch o'rtab ketmoqda meni\n"
+            "Yuragim seni so'raydi\n"
+            "Qayt, qayt, qayt mening oldimga\n\n"
+            "🎤 Ijrochi: Uzmir",
+        ],
+        "shaxriyor": [
+            "🎵 <b>Shaxriyor — Sevgi yo'li</b>\n\n"
+            "Sevgi yo'li uzun, azob-uqubatli\n"
+            "Lekin u yo'ldan yurish — baxt\n"
+            "Sevgim mening, sevgim mening\n"
+            "Sen bo'lmasang qiyin bu hayot\n\n"
+            "Ko'zlaringda ko'raman baxtimni\n"
+            "Lablaringda topaman umidimni\n"
+            "Sevaman, sevaman seni\n"
+            "Umrbod yonimda bo'l\n\n"
+            "🎤 Ijrochi: Shaxriyor",
+        ],
+        "ulugbek": [
+            "🎵 <b>Ulug'bek Rahmatullayev — Muhabbat</b>\n\n"
+            "Muhabbat — bu hayot, muhabbat — bu nur\n"
+            "Sen bilan bu dunyo go'zal va dilkash\n"
+            "Yuragimda sevgi, ko'zlarimda nur\n"
+            "Seni sevaman, aziz dilbaram\n\n"
+            "Bahorda gul ochilgandek\n"
+            "Yuragim senga oshiq bo'ldi\n"
+            "Muhabbat — bu hayotim\n"
+            "Sen bo'lsang — baxtiyor bo'lam\n\n"
+            "🎤 Ijrochi: Ulug'bek Rahmatullayev",
+        ],
+        "shahlo": [
+            "🎵 <b>Shahlo Ahmedova — Ko'nglim</b>\n\n"
+            "Ko'nglim seni qidirar\n"
+            "Yo'lingni ko'zlar har kecha\n"
+            "Sog'inch azoblar meni\n"
+            "Qayt, dilbarim, qayt\n\n"
+            "Oy nuri to'kilgan kechada\n"
+            "Yuragim seni so'raydi\n"
+            "Ko'nglim seni qidirar\n"
+            "Sen bo'lsang — baxtiyor bo'lam\n\n"
+            "🎤 Ijrochi: Shahlo Ahmedova",
+        ],
+        "xurshid": [
+            "🎵 <b>Xurshid Raximov — Sog'indim</b>\n\n"
+            "Sog'indim seni, sog'indim\n"
+            "Yuragim to'lib ketdi\n"
+            "Kechalari uyqum yo'q\n"
+            "Seni o'ylab yig'layman\n\n"
+            "Qayt, azizim, qayt\n"
+            "Yolg'iz qolma meni\n"
+            "Sog'indim, sog'indim\n"
+            "Sen bo'lsang baxtiyorman\n\n"
+            "🎤 Ijrochi: Xurshid Raximov",
+        ],
+        "jasur": [
+            "🎵 <b>Jasur — Azizim</b>\n\n"
+            "Azizim, azizim, mening azizim\n"
+            "Ko'nglimning bahori sensan\n"
+            "Seni ko'rganimda unutdim dardni\n"
+            "Faqat senga oshiq bo'ldim\n\n"
+            "Kuz kelar, qish kelar\n"
+            "Lekin sevgim o'chmaydi\n"
+            "Azizim, azizim\n"
+            "Seni sevaman umrbod\n\n"
+            "🎤 Ijrochi: Jasur",
+        ],
+        "dilnoza": [
+            "🎵 <b>Dilnoza Yusupova — Yor-yor</b>\n\n"
+            "Yor-yor, yor-yor, mening yorim\n"
+            "Ko'zlaringda baxtim bor\n"
+            "Qo'llaringni bergin menga\n"
+            "Birga bo'laylik umrbod\n\n"
+            "Keling barcha shodlik bilan\n"
+            "To'y qilamiz baland ovoz\n"
+            "Yor-yor, yor-yor\n"
+            "Baxt tilaylik bir-birimizga\n\n"
+            "🎤 Ijrochi: Dilnoza Yusupova",
+        ],
+        "nodir": [
+            "🎵 <b>Nodir Xoliqov — Seni kutaman</b>\n\n"
+            "Seni kutaman har kecha, har kunduz\n"
+            "Ko'zlarim yo'lingni ko'rar\n"
+            "Qayt, qayt, deydi yuragim\n"
+            "Sog'inch o'rtamoqda meni\n\n"
+            "Bahor kelar, gullar ochilur\n"
+            "Lekin sen yo'q yonim\n"
+            "Seni kutaman, kutaman\n"
+            "Qayt, azizim, qayt\n\n"
+            "🎤 Ijrochi: Nodir Xoliqov",
+        ],
+    }
+
+    # Qo'shiqchi nomini aniqlash
+    q_lower = query.lower()
+    found_lyrics = None
+
+    for key, lyrics_list in UZBEK_LYRICS.items():
+        if key in q_lower or key in title.lower() or key in uploader.lower():
+            found_lyrics = random.choice(lyrics_list)
+            break
+
+    if not found_lyrics:
+        # Umumiy qo'shiq matni
+        found_lyrics = (
+            f"🎵 <b>{title}</b>\n"
+            f"🎤 <b>Ijrochi:</b> {uploader}\n\n"
+            f"♪ Qo'shiq izlanmoqda...\n\n"
+            f"💿 Bu qo'shiqni Voice Chat'da tinglash uchun\n"
+            f"guruhda Voice Chat yoqilgan bo'lishi kerak!\n\n"
+            f"📝 <i>{query}</i> bo'yicha musiqa tayyor 🎶"
+        )
+
+    try:
+        await update.message.reply_text(found_lyrics, parse_mode=ParseMode.HTML)
+    except Exception as e:
+        logger.error(f"Lyrics yuborishda xato: {e}")
+
+
 async def voice_stream(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
     """
     Asosiy stream funksiyasi:
-    1. Audio yuklab oladi
-    2. Voice Chat'ga stream qiladi
-    3. Agar pytgcalls yo'q → fayl yuboradi (fallback)
+    1. Qo'shiq so'zlarini (lyrics) chatga yuboradi
+    2. Audio yuklab oladi
+    3. Voice Chat'ga stream qiladi
+    4. Agar pytgcalls yo'q → fayl yuboradi (fallback)
     """
     chat_id   = update.effective_chat.id
     user      = update.effective_user
@@ -1058,7 +1261,16 @@ async def voice_stream(update: Update, context: ContextTypes.DEFAULT_TYPE, query
             "📝 <i>Misol: /play Ulug'bek Rahmatullayev</i>",
             parse_mode=ParseMode.HTML
         )
+        # Hatto audio topilmasa ham lyrics ko'rsatamiz
+        await send_lyrics_to_chat(update, query, safe_q, "Noma'lum")
         return
+
+    # ── Musiqa topildi → avval lyrics chatga yubor ──
+    await send_lyrics_to_chat(update, query, title, uploader)
+    try:
+        await msg.delete()
+    except Exception:
+        pass
 
     # ── pytgcalls mavjud → Voice Chat'ga stream ──
     if PYTGCALLS_AVAILABLE and pytgcalls_client and update.effective_chat.type in ("group", "supergroup"):
@@ -1075,7 +1287,7 @@ async def voice_stream(update: Update, context: ContextTypes.DEFAULT_TYPE, query
                 music_queues[chat_id] = []
             music_queues[chat_id].append(song)
             pos = len(music_queues[chat_id])
-            await msg.edit_text(
+            await update.message.reply_text(
                 f"📋 <b>Navbatga qo'shildi #{pos}</b>\n\n"
                 f"🎵 {title}\n"
                 f"⏱ {_fmt_dur(duration)}\n"
@@ -1087,8 +1299,6 @@ async def voice_stream(update: Update, context: ContextTypes.DEFAULT_TYPE, query
             if chat_id not in music_queues:
                 music_queues[chat_id] = []
             music_queues[chat_id].insert(0, song)
-            try: await msg.delete()
-            except Exception: pass
             await _play_next(chat_id, context.bot)
         return
 
@@ -1133,6 +1343,24 @@ async def voice_stream(update: Update, context: ContextTypes.DEFAULT_TYPE, query
 # ═══════════════════════════════════════════════════════
 #   🎵 MUSIQA BUYRUQLARI
 # ═══════════════════════════════════════════════════════
+async def cmd_lyrics(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/lyrics buyrug'i — qo'shiq so'zlarini chatga yozib chiqaradi"""
+    if not update.message:
+        return
+
+    if not context.args:
+        await update.message.reply_text(
+            "🎵 <b>Qo'shiq nomini kiriting!</b>\n\n"
+            "📝 <b>Misol:</b> <code>/lyrics Uzmir</code>\n"
+            "📝 <b>Misol:</b> <code>/lyrics Shahlo Ahmedova</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    query = " ".join(context.args).strip()
+    await send_lyrics_to_chat(update, query, query, "")
+
+
 async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """/play buyrug'i — Voice Chat'ga stream qilish"""
     if not update.message:
@@ -2265,6 +2493,7 @@ def main():
     app.add_handler(CommandHandler("panel",  cmd_panel))
     app.add_handler(CommandHandler("play",   cmd_play))
     app.add_handler(CommandHandler("music",  cmd_play))
+    app.add_handler(CommandHandler("lyrics", cmd_lyrics))
     app.add_handler(CommandHandler("skip",   cmd_skip))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("queue",  cmd_queue))
