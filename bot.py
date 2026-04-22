@@ -1,30 +1,30 @@
 # ╔══════════════════════════════════════════════════════════════════════╗
-# ║   🤖 YORDAMCHI + TEKSHIRISH + 🎵 MUSIQA BOT — BIRLASHTIRILGAN v3  ║
-# ║   ✅ /start bosgan foydalanuvchilarni saqlash                      ║
-# ║   ✅ Admin panel — foydalanuvchini ID bo'yicha tekshirish          ║
-# ║   ✅ Foydalanuvchi ismi, ID, guruhlari, yozgan guruhlari           ║
-# ║   ✅ Obuna bo'lgan kanallar (bot admin bo'lgan kanallar)           ║
-# ║   ✅ Guruhda yozish uchun kanalga OBUNA bo'lish shart              ║
-# ║   ✅ Guruhda yozish uchun 2 DO'ST TAKLIF qilish shart             ║
-# ║   ✅ Har 2 daqiqada taklif xabari                                  ║
-# ║   ✅ Taklif qilgan odam maqtaladi                                  ║
-# ║   ✅ JONLI EFIR boshqaruvi (yoqish/o'chirish)                     ║
-# ║   ✅ So'kingan foydalanuvchini avtomatik MUTE qilish              ║
-# ║   ✅ Admin qo'shishda HUQUQLARNI SO'RASH (inline tanlov)          ║
-# ║   ✅ Foydalanuvchini BAN / KICK / UNBAN qilish                    ║
-# ║   ✅ Pastki menyu tugmalari (ReplyKeyboard)                       ║
-# ║   🎵 /play [qo'shiq nomi] — YouTube'dan musiqa yuklash           ║
-# ║   🎵 Guruhga yangi a'zo qo'shilganda musiqa xabari               ║
-# ║   🎵 Guruhda /play buyrug'i bilan musiqa izlash                   ║
+# ║   🤖 YORDAMCHI + TEKSHIRISH + 🎵 VOICE CHAT MUSIQA BOT v4          ║
+# ║   ✅ /start bosgan foydalanuvchilarni saqlash                        ║
+# ║   ✅ Admin panel — foydalanuvchini ID bo'yicha tekshirish            ║
+# ║   ✅ Guruhda yozish uchun kanalga OBUNA bo'lish shart                ║
+# ║   ✅ Guruhda yozish uchun 2 DO'ST TAKLIF qilish shart               ║
+# ║   ✅ Har 2 daqiqada taklif xabari                                    ║
+# ║   ✅ So'kingan foydalanuvchini avtomatik MUTE qilish                ║
+# ║   ✅ Ban / Kick / Unban / Admin qo'shish                            ║
+# ║   🎵 /play  — Voice Chat'ga STREAM qilish (Kristine Music kabi)     ║
+# ║   🎵 /skip  — Keyingi qo'shiqqa o'tish                             ║
+# ║   🎵 /stop  — Musiqani to'xtatish                                   ║
+# ║   🎵 /queue — Navbat ko'rish                                        ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 #
 # 💡 ISHGA TUSHIRISH:
-#   pip install "python-telegram-bot[job-queue]==20.7" yt-dlp
+#   pip install "python-telegram-bot[job-queue]==20.7" yt-dlp pyrogram==2.0.106 pytgcalls==3.0.0.dev29
 #   sudo apt install ffmpeg
+#
+# ⚙️ API_ID va API_HASH olish:
+#   1. https://my.telegram.org ga kiring
+#   2. "API development tools" ga o'ting
+#   3. App yarating → API_ID va API_HASH oling
 #
 # ⚙️ BOT SOZLAMALARI (@BotFather):
 #   1. Bot Settings → Group Privacy → DISABLE
-#   2. Botni guruhga ADMIN qiling
+#   2. Botni guruhga ADMIN qiling (Manage Video Chats ruxsati kerak!)
 
 import logging
 import sqlite3
@@ -32,6 +32,7 @@ import asyncio
 import random
 import urllib.parse
 import os
+import glob
 from datetime import datetime, timedelta
 
 from telegram import (
@@ -47,16 +48,34 @@ from telegram.error import TelegramError
 
 import yt_dlp
 
+# ── PyTgCalls imports ──
+try:
+    from pyrogram import Client
+    from pytgcalls import PyTgCalls
+    from pytgcalls.types import MediaStream, AudioQuality
+    PYTGCALLS_AVAILABLE = True
+except ImportError:
+    PYTGCALLS_AVAILABLE = False
+    print("⚠️  pytgcalls/pyrogram o'rnatilmagan! Faqat fayl yuborish ishlaydi.")
+    print("    pip install pyrogram==2.0.106 pytgcalls==3.0.0.dev29")
+
 
 # ═══════════════════════════════════════════════════════
 #                    ⚙️ ASOSIY SOZLAMALAR
 # ═══════════════════════════════════════════════════════
-BOT_TOKEN        = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"
+BOT_TOKEN        = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"  # ← o'zgartirmang
 ADMIN_IDS        = [8537782289]
 BOT_NAME         = "@GuruhYordamchIUZBBOT"
 INVITE_INTERVAL  = 120
 REQUIRED_INVITES = 2
 MUTE_DURATION    = 10
+
+# ════════════════════════════════════════════════════════
+#   🔑 my.telegram.org dan olingan API kalitlar
+#   https://my.telegram.org → API development tools
+# ════════════════════════════════════════════════════════
+API_ID   = 12345678          # ← O'ZGARTIRING: my.telegram.org dan
+API_HASH = "your_api_hash"   # ← O'ZGARTIRING: my.telegram.org dan
 
 INVITE_MESSAGE = (
     "👋 <b>Assalom aleykum birodarlar!</b>\n\n"
@@ -67,6 +86,12 @@ INVITE_MESSAGE = (
 
 invite_links_db: dict = {}
 waiting_for_music: dict = {}
+
+# ── Musiqa navbati (queue) ──
+# { chat_id: [ {title, file, requester, duration}, ... ] }
+music_queues: dict = {}
+# { chat_id: {title, file, requester, duration} }  — hozir ijro etilayotgan
+now_playing:  dict = {}
 
 
 # ═══════════════════════════════════════════════════════
@@ -821,10 +846,9 @@ async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ═══════════════════════════════════════════════════════
-#   🎵 MUSIQA FUNKSIYALARI — TO'LDIRILGAN VA TUZATILGAN
+#   🎵 MUSIQA — YUKLAB OLISH YORDAMCHISI
 # ═══════════════════════════════════════════════════════
 def _get_ydl_opts(outtmpl: str, use_ffmpeg: bool = True) -> dict:
-    """yt-dlp sozlamalari — YouTube bot-bloklanishini chetlab o'tadi"""
     opts = {
         "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
         "outtmpl": outtmpl,
@@ -833,7 +857,6 @@ def _get_ydl_opts(outtmpl: str, use_ffmpeg: bool = True) -> dict:
         "noplaylist": True,
         "default_search": "ytsearch",
         "source_address": "0.0.0.0",
-        # YouTube bot-bloklanishini chetlab o'tish
         "extractor_args": {
             "youtube": {
                 "player_client": ["android", "web"],
@@ -863,21 +886,16 @@ def _get_ydl_opts(outtmpl: str, use_ffmpeg: bool = True) -> dict:
 
 
 def _find_downloaded_file(base_path: str, vid_id: str, prefix: str) -> str | None:
-    """Yuklangan faylni topish"""
     exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg", ".aac", ".flac"]
-    # ID asosida qidirish
     for ext in exts:
         f = f"{prefix}{vid_id}{ext}"
         if os.path.exists(f):
             return f
-    # prepare_filename asosida qidirish
     base = base_path.rsplit(".", 1)[0]
     for ext in exts:
         if os.path.exists(base + ext):
             return base + ext
-    # /tmp papkasida oxirgi yuklangan faylni qidirish
     try:
-        import glob
         pattern = f"{prefix.rstrip('_')}*"
         files = glob.glob(pattern)
         if files:
@@ -887,102 +905,194 @@ def _find_downloaded_file(base_path: str, vid_id: str, prefix: str) -> str | Non
     return None
 
 
-async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
-    """YouTube'dan musiqa yuklab yuboradi — 100% ishlaydigan versiya"""
-    safe_query = query[:50]
-    msg = await update.message.reply_text(
-        f"🔍 <b>{safe_query}</b> — izlanmoqda...",
-        parse_mode=ParseMode.HTML
-    )
-
-    mp3_file = None
-    title    = safe_query
+async def download_audio(query: str) -> tuple[str | None, str, int, str]:
+    """
+    Audio faylni yuklab oladi.
+    Qaytaradi: (fayl_yoli, sarlavha, davomiylik, ijrochi)
+    """
+    title    = query[:50]
     duration = 0
     uploader = "Noma'lum"
+    mp3_file = None
 
-    # ── Qidiruv so'rovini tayyorlash ──
-    # URL bo'lsa to'g'ridan-to'g'ri ishlatamiz, aks holda ytsearch
-    if query.startswith("http://") or query.startswith("https://"):
-        search_query = query
-    else:
-        search_query = f"ytsearch1:{query}"
+    search_query = query if query.startswith("http") else f"ytsearch1:{query}"
 
-    # ── 1-urinish: ffmpeg bilan mp3 ──
+    # 1-urinish: ffmpeg bilan mp3
     try:
-        await msg.edit_text(
-            f"⏳ <b>{safe_query}</b> — yuklanmoqda (1/2)...",
-            parse_mode=ParseMode.HTML
-        )
-        prefix1 = "/tmp/mus1_"
+        prefix1  = "/tmp/vc1_"
         outtmpl1 = f"{prefix1}%(id)s.%(ext)s"
-        ydl_opts1 = _get_ydl_opts(outtmpl1, use_ffmpeg=True)
-
-        with yt_dlp.YoutubeDL(ydl_opts1) as ydl:
+        with yt_dlp.YoutubeDL(_get_ydl_opts(outtmpl1, use_ffmpeg=True)) as ydl:
             info = ydl.extract_info(search_query, download=True)
             if info and "entries" in info:
                 entries = [e for e in info["entries"] if e]
-                if not entries:
-                    raise ValueError("Natija topilmadi")
-                info = entries[0]
-            if not info:
-                raise ValueError("Ma'lumot olinmadi")
-
-            title    = (info.get("title") or query)[:64]
-            duration = int(info.get("duration") or 0)
-            uploader = (info.get("uploader") or info.get("channel") or "Noma'lum")[:40]
-            vid_id   = info.get("id") or "unknown"
-            filename = ydl.prepare_filename(info)
-
-        mp3_file = _find_downloaded_file(filename, vid_id, prefix1)
-
-    except Exception as e:
-        logger.warning(f"1-urinish muvaffaqiyatsiz ({query}): {e}")
-
-    # ── 2-urinish: ffmpeg siz (fallback) ──
-    if not mp3_file or not os.path.exists(mp3_file):
-        try:
-            await msg.edit_text(
-                f"⏳ <b>{safe_query}</b> — yuklanmoqda (2/2)...",
-                parse_mode=ParseMode.HTML
-            )
-            prefix2 = "/tmp/mus2_"
-            outtmpl2 = f"{prefix2}%(id)s.%(ext)s"
-            ydl_opts2 = _get_ydl_opts(outtmpl2, use_ffmpeg=False)
-            # ffmpeg yo'q bo'lsa m4a/webm yuklash
-            ydl_opts2["format"] = "bestaudio[filesize<45M]/bestaudio/best[filesize<45M]"
-
-            with yt_dlp.YoutubeDL(ydl_opts2) as ydl:
-                info = ydl.extract_info(search_query, download=True)
-                if info and "entries" in info:
-                    entries = [e for e in info["entries"] if e]
-                    if not entries:
-                        raise ValueError("Natija topilmadi")
-                    info = entries[0]
-                if not info:
-                    raise ValueError("Ma'lumot olinmadi")
-
+                info = entries[0] if entries else None
+            if info:
                 title    = (info.get("title") or query)[:64]
                 duration = int(info.get("duration") or 0)
                 uploader = (info.get("uploader") or info.get("channel") or "Noma'lum")[:40]
                 vid_id   = info.get("id") or "unknown"
                 filename = ydl.prepare_filename(info)
+                mp3_file = _find_downloaded_file(filename, vid_id, prefix1)
+    except Exception as e:
+        logger.warning(f"1-urinish muvaffaqiyatsiz ({query}): {e}")
 
-            mp3_file = _find_downloaded_file(filename, vid_id, prefix2)
+    # 2-urinish: ffmpeg siz (fallback)
+    if not mp3_file or not os.path.exists(mp3_file):
+        try:
+            prefix2  = "/tmp/vc2_"
+            outtmpl2 = f"{prefix2}%(id)s.%(ext)s"
+            opts2 = _get_ydl_opts(outtmpl2, use_ffmpeg=False)
+            opts2["format"] = "bestaudio[filesize<45M]/bestaudio/best[filesize<45M]"
+            with yt_dlp.YoutubeDL(opts2) as ydl:
+                info = ydl.extract_info(search_query, download=True)
+                if info and "entries" in info:
+                    entries = [e for e in info["entries"] if e]
+                    info = entries[0] if entries else None
+                if info:
+                    title    = (info.get("title") or query)[:64]
+                    duration = int(info.get("duration") or 0)
+                    uploader = (info.get("uploader") or info.get("channel") or "Noma'lum")[:40]
+                    vid_id   = info.get("id") or "unknown"
+                    filename = ydl.prepare_filename(info)
+                    mp3_file = _find_downloaded_file(filename, vid_id, prefix2)
+        except Exception as e:
+            logger.error(f"2-urinish ham muvaffaqiyatsiz ({query}): {e}")
 
-        except Exception as e2:
-            logger.error(f"2-urinish ham muvaffaqiyatsiz ({query}): {e2}")
+    return mp3_file, title, duration, uploader
 
-    # ── Topilmadi ──
+
+# ═══════════════════════════════════════════════════════
+#   🎵 VOICE CHAT — STREAM FUNKSIYALARI
+# ═══════════════════════════════════════════════════════
+
+# Global pytgcalls instance (main() da to'ldiriladi)
+pytgcalls_client = None
+pyrogram_app     = None
+
+
+def _fmt_dur(seconds: int) -> str:
+    m, s = divmod(seconds, 60)
+    return f"{m}:{s:02d}"
+
+
+async def _play_next(chat_id: int, tg_bot=None):
+    """Navbatdagi qo'shiqni stream qiladi."""
+    global pytgcalls_client, now_playing
+
+    queue = music_queues.get(chat_id, [])
+    if not queue:
+        now_playing.pop(chat_id, None)
+        # Voice chat'dan chiqish
+        if pytgcalls_client:
+            try:
+                await pytgcalls_client.leave_group_call(chat_id)
+            except Exception:
+                pass
+        return
+
+    song = queue.pop(0)
+    now_playing[chat_id] = song
+
+    try:
+        if PYTGCALLS_AVAILABLE and pytgcalls_client:
+            await pytgcalls_client.join_group_call(
+                chat_id,
+                MediaStream(
+                    song["file"],
+                    audio_parameters=AudioQuality.STUDIO,
+                )
+            )
+        minutes = song["duration"] // 60
+        seconds = song["duration"] % 60
+        text = (
+            f"🎵 <b>Streaming Started</b> |\n\n"
+            f"<b>━━</b> Title: <b>{song['title']}</b>\n"
+            f"⏱ Duration: {minutes}:{seconds:02d} minutes\n"
+            f"👤 Requested by: {song['requester']}"
+        )
+        if tg_bot:
+            try:
+                await tg_bot.send_message(
+                    chat_id=chat_id,
+                    text=text,
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=InlineKeyboardMarkup([
+                        [
+                            InlineKeyboardButton("⏭ Skip",  callback_data=f"vc_skip_{chat_id}"),
+                            InlineKeyboardButton("⏹ Stop",  callback_data=f"vc_stop_{chat_id}"),
+                            InlineKeyboardButton("📋 Queue", callback_data=f"vc_queue_{chat_id}"),
+                        ]
+                    ])
+                )
+            except Exception as e:
+                logger.error(f"Stream xabari yuborishda xato: {e}")
+    except Exception as e:
+        logger.error(f"Stream xatosi chat={chat_id}: {e}")
+        # Keyingi qo'shiqqa o'tish
+        await _play_next(chat_id, tg_bot)
+
+
+async def voice_stream(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
+    """
+    Asosiy stream funksiyasi:
+    1. Audio yuklab oladi
+    2. Voice Chat'ga stream qiladi
+    3. Agar pytgcalls yo'q → fayl yuboradi (fallback)
+    """
+    chat_id   = update.effective_chat.id
+    user      = update.effective_user
+    safe_q    = query[:50]
+
+    msg = await update.message.reply_text(
+        f"🔍 <b>{safe_q}</b> — izlanmoqda...",
+        parse_mode=ParseMode.HTML
+    )
+
+    await msg.edit_text(f"⏳ <b>{safe_q}</b> — yuklanmoqda...", parse_mode=ParseMode.HTML)
+    mp3_file, title, duration, uploader = await download_audio(query)
+
     if not mp3_file or not os.path.exists(mp3_file):
         await msg.edit_text(
-            f"❌ <b>{safe_query}</b> topilmadi yoki xato yuz berdi.\n\n"
+            f"❌ <b>{safe_q}</b> topilmadi yoki xato yuz berdi.\n\n"
             "💡 Boshqa nom bilan urinib ko'ring!\n"
             "📝 <i>Misol: /play Ulug'bek Rahmatullayev</i>",
             parse_mode=ParseMode.HTML
         )
         return
 
-    # ── Hajm tekshiruvi ──
+    # ── pytgcalls mavjud → Voice Chat'ga stream ──
+    if PYTGCALLS_AVAILABLE and pytgcalls_client and update.effective_chat.type in ("group", "supergroup"):
+        song = {
+            "title":    title,
+            "file":     mp3_file,
+            "requester": user.first_name,
+            "duration": duration,
+        }
+
+        if chat_id in now_playing:
+            # Hozir boshqa qo'shiq aytilmoqda → navbatga qo'shish
+            if chat_id not in music_queues:
+                music_queues[chat_id] = []
+            music_queues[chat_id].append(song)
+            pos = len(music_queues[chat_id])
+            await msg.edit_text(
+                f"📋 <b>Navbatga qo'shildi #{pos}</b>\n\n"
+                f"🎵 {title}\n"
+                f"⏱ {_fmt_dur(duration)}\n"
+                f"👤 {user.first_name}",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            # Hozir hech narsa aytilmayapti → darhol boshlash
+            if chat_id not in music_queues:
+                music_queues[chat_id] = []
+            music_queues[chat_id].insert(0, song)
+            try: await msg.delete()
+            except Exception: pass
+            await _play_next(chat_id, context.bot)
+        return
+
+    # ── pytgcalls yo'q → fallback: fayl yuborish ──
     file_size_mb = os.path.getsize(mp3_file) / (1024 * 1024)
     if file_size_mb > 49:
         await msg.edit_text(
@@ -993,45 +1103,25 @@ async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_
         except Exception: pass
         return
 
-    minutes = duration // 60
-    seconds = duration % 60
     caption = (
         f"🎵 <b>{title}</b>\n"
         f"👤 {uploader}\n"
-        f"⏱ {minutes}:{seconds:02d}\n\n"
+        f"⏱ {_fmt_dur(duration)}\n\n"
         f"🤖 {BOT_NAME}"
     )
-
-    # ── Yuborish ──
     try:
-        await msg.edit_text(
-            f"📤 <b>{title[:40]}</b> — jo'natilmoqda...",
-            parse_mode=ParseMode.HTML
-        )
-        with open(mp3_file, "rb") as audio_file:
+        await msg.edit_text(f"📤 <b>{title[:40]}</b> — jo'natilmoqda...", parse_mode=ParseMode.HTML)
+        with open(mp3_file, "rb") as f:
             await update.message.reply_audio(
-                audio=audio_file,
-                title=title,
-                performer=uploader,
-                duration=duration,
-                caption=caption,
-                parse_mode=ParseMode.HTML,
-                read_timeout=120,
-                write_timeout=120,
-                connect_timeout=30,
+                audio=f, title=title, performer=uploader, duration=duration,
+                caption=caption, parse_mode=ParseMode.HTML,
+                read_timeout=120, write_timeout=120, connect_timeout=30,
             )
         try: await msg.delete()
         except Exception: pass
     except Exception as e:
-        logger.error(f"Yuborishda xato ({query}): {e}")
-        try:
-            await msg.edit_text(
-                f"❌ Yuborishda xato: {str(e)[:80]}\n\n"
-                "💡 Boshqa nom bilan urinib ko'ring!",
-                parse_mode=ParseMode.HTML
-            )
-        except Exception:
-            pass
+        logger.error(f"Yuborishda xato: {e}")
+        await msg.edit_text(f"❌ Yuborishda xato: {str(e)[:80]}")
     finally:
         try:
             if mp3_file and os.path.exists(mp3_file):
@@ -1040,8 +1130,11 @@ async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_
             pass
 
 
+# ═══════════════════════════════════════════════════════
+#   🎵 MUSIQA BUYRUQLARI
+# ═══════════════════════════════════════════════════════
 async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/play buyrug'i — guruh va private da musiqa izlash"""
+    """/play buyrug'i — Voice Chat'ga stream qilish"""
     if not update.message:
         return
 
@@ -1061,7 +1154,96 @@ async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text("❌ Qo'shiq nomi juda qisqa!")
         return
 
-    await download_and_send_music(update, context, query)
+    await voice_stream(update, context, query)
+
+
+async def cmd_skip(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/skip — keyingi qo'shiqqa o'tish"""
+    if not update.message:
+        return
+    chat_id = update.effective_chat.id
+
+    if chat_id not in now_playing:
+        await update.message.reply_text("❌ Hozir hech narsa aytilmayapti!")
+        return
+
+    # Hozirgi faylni o'chirish
+    current = now_playing.get(chat_id)
+    if current and os.path.exists(current.get("file", "")):
+        try: os.remove(current["file"])
+        except Exception: pass
+
+    await update.message.reply_text("⏭ Skip qilindi! Keyingi qo'shiq...")
+    await _play_next(chat_id, context.bot)
+
+
+async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/stop — musiqani to'xtatish va navbatni tozalash"""
+    if not update.message:
+        return
+    chat_id = update.effective_chat.id
+
+    # Fayllarni tozalash
+    for song in music_queues.get(chat_id, []):
+        try:
+            if os.path.exists(song.get("file", "")):
+                os.remove(song["file"])
+        except Exception:
+            pass
+    current = now_playing.get(chat_id)
+    if current:
+        try:
+            if os.path.exists(current.get("file", "")):
+                os.remove(current["file"])
+        except Exception:
+            pass
+
+    music_queues.pop(chat_id, None)
+    now_playing.pop(chat_id, None)
+
+    if PYTGCALLS_AVAILABLE and pytgcalls_client:
+        try:
+            await pytgcalls_client.leave_group_call(chat_id)
+        except Exception:
+            pass
+
+    await update.message.reply_text(
+        "⏹ <b>Musiqa to'xtatildi!</b>\n🗑 Navbat tozalandi.",
+        parse_mode=ParseMode.HTML
+    )
+
+
+async def cmd_queue(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/queue — navbatni ko'rish"""
+    if not update.message:
+        return
+    chat_id = update.effective_chat.id
+
+    current = now_playing.get(chat_id)
+    queue   = music_queues.get(chat_id, [])
+
+    if not current and not queue:
+        await update.message.reply_text("📋 Navbat bo'sh! /play bilan qo'shiq qo'shing.")
+        return
+
+    lines = ["📋 <b>Musiqa navbati</b>\n━━━━━━━━━━━━━━\n"]
+
+    if current:
+        lines.append(f"▶️ <b>Hozir:</b> {current['title']} — {_fmt_dur(current['duration'])}")
+
+    for i, song in enumerate(queue, 1):
+        lines.append(f"{i}. {song['title']} — {_fmt_dur(song['duration'])}")
+
+    await update.message.reply_text(
+        "\n".join(lines),
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("⏭ Skip",  callback_data=f"vc_skip_{chat_id}"),
+                InlineKeyboardButton("⏹ Stop",  callback_data=f"vc_stop_{chat_id}"),
+            ]
+        ])
+    )
 
 
 # ═══════════════════════════════════════════════════════
@@ -1076,7 +1258,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if is_admin(user.id):
         active, banned, total, today = get_stats()
-        groups = get_active_groups()
+        groups   = get_active_groups()
         channels = get_all_channels()
         await update.message.reply_text(
             f"👑 Xush kelibsiz, <b>{user.first_name}</b>!\n\n"
@@ -1106,12 +1288,16 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"  1️⃣ Kanalga obuna bo'ling\n"
             f"  2️⃣ {REQUIRED_INVITES} ta do'st taklif qiling\n"
             f"  3️⃣ Shundan keyin erkin yozasiz! ✅\n\n"
-            "🎵 <b>Musiqa tinglash:</b>\n"
-            "  👉 /play [qo'shiq nomi]\n\n"
+            "🎵 <b>Musiqa tinglash (Voice Chat):</b>\n"
+            "  👉 /play [qo'shiq nomi]\n"
+            "  👉 /skip — keyingi qo'shiq\n"
+            "  👉 /stop — to'xtatish\n"
+            "  👉 /queue — navbat\n\n"
             "👇 Tanlang:",
             parse_mode=ParseMode.HTML,
             reply_markup=user_kb(bot_info.username)
         )
+
 
 async def cmd_panel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not is_admin(update.effective_user.id):
@@ -1137,8 +1323,11 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     text=(
                         f"🎵 <b>Assalomu alaykum! Men {BOT_NAME}man!</b> 🎵\n\n"
                         f"✅ Guruhingizga qo'shildim!\n\n"
-                        f"🎶 <b>Musiqa tinglash uchun:</b>\n"
-                        f"  👉 /play [qo'shiq nomi]\n\n"
+                        f"🎶 <b>Voice Chat'da musiqa tinglash:</b>\n"
+                        f"  👉 /play [qo'shiq nomi]\n"
+                        f"  👉 /skip — keyingi qo'shiq\n"
+                        f"  👉 /stop — to'xtatish\n"
+                        f"  👉 /queue — navbat\n\n"
                         f"🛡 <b>Guruh himoyasi:</b>\n"
                         f"  ✅ So'kinish filtri\n"
                         f"  ✅ Obuna tekshiruvi\n"
@@ -1146,9 +1335,6 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"🎵 <i>Musiqa bilan hayot go'zal!</i>"
                     ),
                     parse_mode=ParseMode.HTML,
-                    reply_markup=InlineKeyboardMarkup([
-                        [InlineKeyboardButton("🎵 Musiqa Izla", callback_data="music_search")],
-                    ])
                 )
             except Exception as e:
                 logger.error(f"Guruhga qo'shilish xabari xatosi: {e}")
@@ -1159,19 +1345,6 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif chat.type == "channel":
         if status == ChatMember.ADMINISTRATOR:
             save_channel(chat.id, chat.title, chat.username)
-            logger.info(f"✅ Kanalga admin qo'shildi: {chat.title} ({chat.id})")
-            try:
-                await context.bot.send_message(
-                    chat_id=chat.id,
-                    text=(
-                        f"🎵 <b>{BOT_NAME} kanalingizga qo'shildi!</b>\n\n"
-                        f"✅ Endi bu kanal obuna tekshiruvida ishlatilishi mumkin.\n\n"
-                        f"🎶 /play [qo'shiq nomi] — Musiqa yuklash"
-                    ),
-                    parse_mode=ParseMode.HTML
-                )
-            except Exception:
-                pass
 
 
 # ── Yangi a'zo guruhga qo'shilganda ──
@@ -1203,7 +1376,7 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 f"🎵 Xush kelibsiz {mn}! 🎵\n\n"
                 f"📋 <b>Guruhda yozish uchun:</b>\n"
                 + "\n".join(steps)
-                + "\n\n🎶 <b>Musiqa tinglash:</b> /play [qo'shiq nomi]"
+                + "\n\n🎶 <b>Musiqa:</b> /play [qo'shiq nomi]"
             )
             btns = []
             if ch_username and ch_link:
@@ -1211,23 +1384,19 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             if not get_invite_disabled(update.effective_chat.id):
                 btns.append([InlineKeyboardButton("➕ Do'st taklif qilish",
                                                   callback_data=f"invite_{update.effective_chat.id}")])
-            btns.append([InlineKeyboardButton("🎵 Musiqa Izla", callback_data="music_search")])
             await update.message.reply_text(
                 greet_text, parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(btns) if btns else None
             )
         else:
             music_greets = [
-                f"🎵 Xush kelibsiz {mn}! Musiqa tinglash uchun /play yozing! 😊🌟",
+                f"🎵 Xush kelibsiz {mn}! Musiqa: /play qo'shiq nomi! 😊🌟",
                 f"👋 Salom {mn}! Guruhimizga marhamat! 🎊 /play bilan musiqa eshiting!",
                 f"✨ {mn} bilan guruh yanada jonlandi! 💫 🎵 /play [qo'shiq nomi]",
             ]
             await update.message.reply_text(
                 random.choice(music_greets),
                 parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("🎵 Musiqa Izla", callback_data="music_search")]
-                ])
             )
 
 
@@ -1300,7 +1469,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         text = update.message.text or ""
         if waiting_for_music.get(user.id):
             waiting_for_music[user.id] = False
-            await download_and_send_music(update, context, text)
+            await voice_stream(update, context, text)
         return
 
     text   = update.message.text or ""
@@ -1409,7 +1578,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if text == "📡 Jonli efir":
         await update.message.reply_text(
-            "📡 <b>Jonli efir boshqaruvi</b>\n\nGuruh ID sini yuboring:",
+            "📡 <b>Jonli efir boshqaruvi</b>",
             parse_mode=ParseMode.HTML,
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("📝 Guruh tanlash", callback_data="livestream_menu")],
@@ -1433,8 +1602,8 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not info:
             await update.message.reply_text(f"❌ ID <code>{uid}</code> topilmadi.", parse_mode=ParseMode.HTML)
             return
-        uname_str = f"@{info['username']}" if info['username'] else "—"
-        groups_str = "\n".join(
+        uname_str   = f"@{info['username']}" if info['username'] else "—"
+        groups_str  = "\n".join(
             [f"   📌 {g[1]} (@{g[2]})" if g[2] else f"   📌 {g[1]}" for g in info['groups']]
         ) or "   —"
         written_str = "\n".join(
@@ -1455,7 +1624,7 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if action == "broadcast":
         context.user_data.pop("action", None)
-        group_ids = get_active_groups()
+        group_ids  = get_active_groups()
         sent_count = 0
         for gid in group_ids:
             try:
@@ -1479,205 +1648,271 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             link  = lines[1].strip()
             save_channel_settings(uname, link)
             await update.message.reply_text(
-                f"✅ <b>Kanal saqlandi!</b>\n\n📢 {uname}\n🔗 {link}",
+                f"✅ Majburiy kanal saqlandi!\n\n"
+                f"📢 Username: <b>{uname}</b>\n"
+                f"🔗 Link: {link}",
                 parse_mode=ParseMode.HTML
             )
         else:
-            await update.message.reply_text("❌ Ikkala qatorda yozing:\n1-qator: @kanal_username\n2-qator: https://t.me/kanal")
-        return
-
-    if action == "admin_chat_id":
-        context.user_data["action"] = "promote_user"
-        context.user_data["admin_chat_id"] = text.strip()
-        await update.message.reply_text(
-            f"👑 Guruh ID: <code>{text.strip()}</code>\n\nEndi foydalanuvchi ID sini yuboring:",
-            parse_mode=ParseMode.HTML
-        )
-        return
-
-    if action == "promote_user":
-        context.user_data.pop("action", None)
-        chat_id = context.user_data.get("admin_chat_id")
-        try:
-            uid = int(text.strip())
-            await context.bot.promote_chat_member(
-                chat_id=int(chat_id), user_id=uid,
-                can_manage_chat=True, can_delete_messages=True,
-                can_restrict_members=True, can_invite_users=True,
+            await update.message.reply_text(
+                "❌ Ikkala qatorni ham yuboring:\n\n"
+                "<i>@kanal_username\nhttps://t.me/kanal_username</i>",
+                parse_mode=ParseMode.HTML
             )
-            await update.message.reply_text(f"✅ <code>{uid}</code> admin qilindi!", parse_mode=ParseMode.HTML)
-        except Exception as e:
-            await update.message.reply_text(f"❌ Xato: {e}")
         return
 
     if action == "ban_user_chat_id":
-        context.user_data["action"] = "ban_user_id"
-        context.user_data["ban_chat_id"] = text.strip()
-        await update.message.reply_text(
-            f"🚫 Guruh: <code>{text.strip()}</code>\n\nEndi ban qilinadigan foydalanuvchi ID sini yuboring:",
-            parse_mode=ParseMode.HTML
-        )
+        context.user_data.pop("action", None)
+        try:
+            cid = int(text.strip())
+            context.user_data["ban_chat_id"] = cid
+            context.user_data["action"] = "ban_user_id"
+            await update.message.reply_text(
+                f"🚫 Guruh ID: <code>{cid}</code>\n\nEndi foydalanuvchi IDsini yuboring:",
+                parse_mode=ParseMode.HTML
+            )
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID!")
         return
 
     if action == "ban_user_id":
         context.user_data.pop("action", None)
-        chat_id = context.user_data.get("ban_chat_id")
+        cid = context.user_data.pop("ban_chat_id", None)
+        if not cid:
+            await update.message.reply_text("❌ Guruh ID topilmadi.")
+            return
         try:
             uid = int(text.strip())
-            await context.bot.ban_chat_member(chat_id=int(chat_id), user_id=uid)
-            await update.message.reply_text(f"✅ <code>{uid}</code> ban qilindi!", parse_mode=ParseMode.HTML)
+            await context.bot.ban_chat_member(chat_id=cid, user_id=uid)
+            await update.message.reply_text(f"✅ Foydalanuvchi <code>{uid}</code> ban qilindi!", parse_mode=ParseMode.HTML)
         except Exception as e:
             await update.message.reply_text(f"❌ Xato: {e}")
         return
 
     if action == "kick_user_chat_id":
-        context.user_data["action"] = "kick_user_id"
-        context.user_data["kick_chat_id"] = text.strip()
-        await update.message.reply_text(
-            f"👢 Guruh: <code>{text.strip()}</code>\n\nEndi kick qilinadigan foydalanuvchi ID sini yuboring:",
-            parse_mode=ParseMode.HTML
-        )
+        context.user_data.pop("action", None)
+        try:
+            cid = int(text.strip())
+            context.user_data["kick_chat_id"] = cid
+            context.user_data["action"] = "kick_user_id"
+            await update.message.reply_text(
+                f"👢 Guruh ID: <code>{cid}</code>\n\nEndi foydalanuvchi IDsini yuboring:",
+                parse_mode=ParseMode.HTML
+            )
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID!")
         return
 
     if action == "kick_user_id":
         context.user_data.pop("action", None)
-        chat_id = context.user_data.get("kick_chat_id")
+        cid = context.user_data.pop("kick_chat_id", None)
+        if not cid:
+            await update.message.reply_text("❌ Guruh ID topilmadi.")
+            return
         try:
             uid = int(text.strip())
-            await context.bot.ban_chat_member(chat_id=int(chat_id), user_id=uid)
-            await asyncio.sleep(1)
-            await context.bot.unban_chat_member(chat_id=int(chat_id), user_id=uid)
-            await update.message.reply_text(f"✅ <code>{uid}</code> kick qilindi!", parse_mode=ParseMode.HTML)
+            await context.bot.ban_chat_member(chat_id=cid, user_id=uid)
+            await context.bot.unban_chat_member(chat_id=cid, user_id=uid)
+            await update.message.reply_text(f"✅ Foydalanuvchi <code>{uid}</code> kick qilindi!", parse_mode=ParseMode.HTML)
         except Exception as e:
             await update.message.reply_text(f"❌ Xato: {e}")
         return
 
     if action == "unban_user_chat_id":
-        context.user_data["action"] = "unban_user_id"
-        context.user_data["unban_chat_id"] = text.strip()
-        await update.message.reply_text(
-            f"✅ Guruh: <code>{text.strip()}</code>\n\nEndi unban qilinadigan foydalanuvchi ID sini yuboring:",
-            parse_mode=ParseMode.HTML
-        )
+        context.user_data.pop("action", None)
+        try:
+            cid = int(text.strip())
+            context.user_data["unban_chat_id"] = cid
+            context.user_data["action"] = "unban_user_id"
+            await update.message.reply_text(
+                f"✅ Guruh ID: <code>{cid}</code>\n\nEndi foydalanuvchi IDsini yuboring:",
+                parse_mode=ParseMode.HTML
+            )
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID!")
         return
 
     if action == "unban_user_id":
         context.user_data.pop("action", None)
-        chat_id = context.user_data.get("unban_chat_id")
+        cid = context.user_data.pop("unban_chat_id", None)
+        if not cid:
+            await update.message.reply_text("❌ Guruh ID topilmadi.")
+            return
         try:
             uid = int(text.strip())
-            await context.bot.unban_chat_member(chat_id=int(chat_id), user_id=uid)
-            await update.message.reply_text(f"✅ <code>{uid}</code> unban qilindi!", parse_mode=ParseMode.HTML)
+            await context.bot.unban_chat_member(chat_id=cid, user_id=uid)
+            await update.message.reply_text(f"✅ Foydalanuvchi <code>{uid}</code> unban qilindi!", parse_mode=ParseMode.HTML)
         except Exception as e:
             await update.message.reply_text(f"❌ Xato: {e}")
         return
 
-    if action == "invite_disable_chat_id":
+    if action == "admin_chat_id":
         context.user_data.pop("action", None)
         try:
             cid = int(text.strip())
-            current = get_invite_disabled(cid)
-            set_invite_disabled(cid, not current)
-            state = "O'CHIRILDI ❌" if not current else "YOQILDI ✅"
+            context.user_data["admin_chat_id"] = cid
+            context.user_data["action"] = "promote_user"
             await update.message.reply_text(
-                f"🔗 Guruh <code>{cid}</code> uchun taklif: <b>{state}</b>",
+                f"👑 Guruh ID: <code>{cid}</code>\n\nEndi admin qilmoqchi bo'lgan foydalanuvchi IDsini yuboring:",
                 parse_mode=ParseMode.HTML
             )
-        except Exception as e:
-            await update.message.reply_text(f"❌ Xato: {e}")
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID!")
+        return
+
+    if action == "promote_user":
+        context.user_data.pop("action", None)
+        cid = context.user_data.pop("admin_chat_id", None)
+        if not cid:
+            await update.message.reply_text("❌ Guruh ID topilmadi.")
+            return
+        try:
+            uid = int(text.strip())
+            context.user_data["perm_selected"] = set()
+            await update.message.reply_text(
+                f"👑 Foydalanuvchi <code>{uid}</code> uchun huquqlarni tanlang:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=get_perm_kb(set(), cid, uid)
+            )
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID!")
         return
 
 
+# ═══════════════════════════════════════════════════════
+#   🔘 INLINE TUGMALAR (Callback)
+# ═══════════════════════════════════════════════════════
 async def on_callback_invite_manage(update_or_query, context):
-    groups = get_all_groups()
-    active_groups = [(g[0], g[1]) for g in groups if g[5] == 0]
-    text = "🔗 <b>Taklif Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
-    text += "✅ = taklif YOQIQ  |  ❌ = taklif O'CHIQ\n\n"
-    rows = []
-    for cid, title in active_groups[:8]:
-        inv_off = get_invite_disabled(cid)
-        icon = "❌" if inv_off else "✅"
-        rows.append([InlineKeyboardButton(f"{icon} {title[:25]}", callback_data=f"inv_toggle_{cid}")])
-    rows.append([InlineKeyboardButton("📝 ID kiritish", callback_data="inv_enter_id")])
-    rows.append([InlineKeyboardButton("🔙 Orqaga",      callback_data="back_admin")])
-    if hasattr(update_or_query, 'message'):
-        await update_or_query.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+    """Taklif boshqaruvi"""
+    if hasattr(update_or_query, "message"):
+        send = update_or_query.message.reply_text
     else:
-        await update_or_query.edit_message_text(text, parse_mode=ParseMode.HTML, reply_markup=InlineKeyboardMarkup(rows))
+        send = update_or_query.edit_message_text
+
+    groups = get_all_groups()
+    active = [(g[0], g[1]) for g in groups if g[5] == 0]
+    rows = []
+    for cid, title in active[:8]:
+        disabled = get_invite_disabled(cid)
+        icon = "🔴" if disabled else "🟢"
+        rows.append([InlineKeyboardButton(
+            f"{icon} {title[:25]}",
+            callback_data=f"inv_toggle_{cid}"
+        )])
+    rows.append([InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")])
+    await send(
+        "🔗 <b>Taklif boshqaruvi</b>\n🟢 = yoqilgan  |  🔴 = o'chirilgan",
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(rows)
+    )
 
 
-# ═══════════════════════════════════════════════════════
-#   🔘 CALLBACK QUERY HANDLER
-# ═══════════════════════════════════════════════════════
 async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    q = update.callback_query
-    if not q: return
-    await q.answer()
-    d = q.data or ""
+    q    = update.callback_query
     user = q.from_user
+    d    = q.data
 
-    if d == "music_search":
-        waiting_for_music[user.id] = True
-        await q.message.reply_text(
-            "🎵 <b>Qo'shiq nomini yozing:</b>\n\n"
-            "📝 <i>Misol: Ulug'bek Rahmatullayev</i>\n"
-            "🔗 <i>Yoki YouTube URL ham ishlaydi</i>",
-            parse_mode=ParseMode.HTML
-        )
+    await q.answer()
+
+    # ── Voice Chat tugmalari ──
+    if d.startswith("vc_skip_"):
+        chat_id = int(d.split("_")[-1])
+        current = now_playing.get(chat_id)
+        if current and os.path.exists(current.get("file", "")):
+            try: os.remove(current["file"])
+            except Exception: pass
+        await q.edit_message_reply_markup(reply_markup=None)
+        await context.bot.send_message(chat_id=chat_id, text="⏭ Skip qilindi!")
+        await _play_next(chat_id, context.bot)
         return
 
+    if d.startswith("vc_stop_"):
+        chat_id = int(d.split("_")[-1])
+        for song in music_queues.get(chat_id, []):
+            try:
+                if os.path.exists(song.get("file", "")):
+                    os.remove(song["file"])
+            except Exception: pass
+        current = now_playing.get(chat_id)
+        if current:
+            try:
+                if os.path.exists(current.get("file", "")):
+                    os.remove(current["file"])
+            except Exception: pass
+        music_queues.pop(chat_id, None)
+        now_playing.pop(chat_id, None)
+        if PYTGCALLS_AVAILABLE and pytgcalls_client:
+            try: await pytgcalls_client.leave_group_call(chat_id)
+            except Exception: pass
+        await q.edit_message_reply_markup(reply_markup=None)
+        await context.bot.send_message(chat_id=chat_id, text="⏹ Musiqa to'xtatildi!")
+        return
+
+    if d.startswith("vc_queue_"):
+        chat_id = int(d.split("_")[-1])
+        current = now_playing.get(chat_id)
+        queue   = music_queues.get(chat_id, [])
+        if not current and not queue:
+            await q.answer("📋 Navbat bo'sh!", show_alert=True)
+            return
+        lines = ["📋 <b>Navbat:</b>\n"]
+        if current:
+            lines.append(f"▶️ {current['title']} — {_fmt_dur(current['duration'])}")
+        for i, s in enumerate(queue, 1):
+            lines.append(f"{i}. {s['title']} — {_fmt_dur(s['duration'])}")
+        await q.answer("\n".join(lines[:5]), show_alert=True)
+        return
+
+    # ── Taklif tugmasi ──
     if d.startswith("invite_"):
-        gid = int(d.split("_", 1)[1])
+        gid = int(d.split("_")[1])
         await handle_invite_button(q, context, gid)
         return
 
-    if d.startswith("check_sub_"):
-        gid = int(d.split("_")[-1])
-        ch_username, ch_link = get_channel_settings()
-        is_sub = await check_subscription(context.bot, user.id)
-        if is_sub:
-            await q.edit_message_text(
-                f"✅ <b>{user.first_name}, obuna tasdiqlandi!</b>\n\n"
-                "Endi guruhda do'st taklif qilishingiz mumkin! 🎉",
-                parse_mode=ParseMode.HTML,
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("➕ Do'st taklif qilish", callback_data=f"invite_{gid}")],
-                ])
-            )
-        else:
-            await q.answer("❌ Siz hali obuna bo'lmagansiz!", show_alert=True)
-        return
-
-    if d.startswith("check_write_sub_"):
-        chat_id = int(d.split("_")[-1])
-        is_sub = await check_subscription(context.bot, user.id)
-        if is_sub:
-            await q.edit_message_text(
-                f"✅ <b>{user.first_name}, obuna tasdiqlandi!</b>\n\nEndi guruhda yozishingiz mumkin! 🎉",
-                parse_mode=ParseMode.HTML
-            )
-        else:
-            await q.answer("❌ Siz hali obuna bo'lmagansiz!", show_alert=True)
-        return
-
     if d.startswith("inv_toggle_"):
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True)
+            return
         cid = int(d.split("_")[-1])
-        current = get_invite_disabled(cid)
-        set_invite_disabled(cid, not current)
-        state = "O'CHIRILDI ❌" if not current else "YOQILDI ✅"
+        current_disabled = get_invite_disabled(cid)
+        set_invite_disabled(cid, not current_disabled)
+        state = "O'CHIRILDI 🔴" if not current_disabled else "YOQILDI 🟢"
         await q.answer(f"Taklif {state}")
         await on_callback_invite_manage(q, context)
         return
 
-    if d == "inv_enter_id":
-        context.user_data["action"] = "invite_disable_chat_id"
-        await q.edit_message_text(
-            "🔗 <b>Taklif boshqaruv — Guruh ID kiriting</b>\n\n"
-            "Guruh ID sini yuboring:\n<i>Misol: -1001234567890</i>",
-            parse_mode=ParseMode.HTML,
-            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="invite_manage_menu")]]))
+    # ── Obuna tekshiruvi ──
+    if d.startswith("check_sub_"):
+        gid = int(d.split("_")[-1])
+        ch_username, ch_link = get_channel_settings()
+        subscribed = await check_subscription(context.bot, user.id)
+        if subscribed:
+            await q.edit_message_text("✅ Obuna tasdiqlandi! Endi taklif qiling.")
+            await handle_invite_button(q, context, gid)
+        else:
+            await q.answer("❌ Hali obuna bo'lmadingiz!", show_alert=True)
         return
 
+    if d.startswith("check_write_sub_"):
+        chat_id = int(d.split("_")[-1])
+        subscribed = await check_subscription(context.bot, user.id)
+        if subscribed:
+            await q.edit_message_text("✅ Obuna tasdiqlandi! Endi guruhda yoza olasiz.")
+        else:
+            await q.answer("❌ Hali obuna bo'lmadingiz!", show_alert=True)
+        return
+
+    # ── Musiqa qidirish ──
+    if d == "music_search":
+        waiting_for_music[user.id] = True
+        await q.message.reply_text(
+            "🎵 <b>Qo'shiq nomini yuboring!</b>\n\n"
+            "📝 <i>Misol: Shahlo Ahmedova</i>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # ── Admin panel ──
     if d == "back_admin" or d == "settings":
         if not is_admin(user.id):
             await q.answer("❌ Ruxsat yo'q!", show_alert=True)
@@ -1694,7 +1929,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("❌ Ruxsat yo'q!", show_alert=True)
             return
         active, banned, total, today = get_stats()
-        groups = get_active_groups()
+        groups   = get_active_groups()
         channels = get_all_channels()
         ch_username, _ = get_channel_settings()
         await q.edit_message_text(
@@ -1716,19 +1951,19 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(user.id):
             await q.answer("❌ Ruxsat yo'q!", show_alert=True)
             return
-        page = int(d.split("_")[1])
-        all_g = get_all_groups()
+        page     = int(d.split("_")[1])
+        all_g    = get_all_groups()
         per_page = 5
-        start = page * per_page
-        end   = start + per_page
-        chunk = all_g[start:end]
-        lines = [f"👥 <b>Guruhlar ({start+1}-{min(end, len(all_g))} / {len(all_g)})</b>\n━━━━━━━━━━━━━━━━━━━━\n"]
+        start    = page * per_page
+        end      = start + per_page
+        chunk    = all_g[start:end]
+        lines    = [f"👥 <b>Guruhlar ({start+1}-{min(end, len(all_g))} / {len(all_g)})</b>\n━━━━━━━━━━━━━━━━━━━━\n"]
         for g in chunk:
             ban_str = " 🚫" if g[5] else ""
             un = f"@{g[2]}" if g[2] else "—"
             lines.append(f"📌 <b>{g[1]}</b>{ban_str}\n   🆔 <code>{g[0]}</code>  {un}\n")
         rows = []
-        nav = []
+        nav  = []
         if page > 0:
             nav.append(InlineKeyboardButton("⬅️", callback_data=f"groups_{page-1}"))
         if end < len(all_g):
@@ -1780,7 +2015,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if d == "cancel_action":
         context.user_data.pop("action", None)
-        await q.edit_message_text("❌ Bekor qilindi.", reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]))
+        await q.edit_message_text("❌ Bekor qilindi.",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]))
         return
 
     if d == "how_to_add":
@@ -1940,7 +2176,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if not is_admin(user.id):
             await q.answer("❌ Ruxsat yo'q!", show_alert=True)
             return
-        cid = int(d.split("_")[-1])
+        cid     = int(d.split("_")[-1])
         current = get_livestream_status(cid)
         set_livestream(cid, not current)
         state = "YOQILDI 🔴" if not current else "O'CHIRILDI ⚫"
@@ -1952,7 +2188,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         key = "_".join(parts[2:-2])
         try:
             chat_id_p = int(parts[-2])
-            uid_p = int(parts[-1])
+            uid_p     = int(parts[-1])
         except Exception:
             return
         selected = context.user_data.get("perm_selected", set())
@@ -1968,7 +2204,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parts = d.split("_")
         try:
             chat_id_p = int(parts[-2])
-            uid_p = int(parts[-1])
+            uid_p     = int(parts[-1])
         except Exception:
             return
         selected = context.user_data.get("perm_selected", set())
@@ -1985,26 +2221,63 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 #                    🚀 ISHGA TUSHIRISH
 # ═══════════════════════════════════════════════════════
 def main():
+    global pytgcalls_client, pyrogram_app
+
     init_db()
+
+    # ── PyTgCalls ni ishga tushirish (agar o'rnatilgan bo'lsa) ──
+    if PYTGCALLS_AVAILABLE:
+        try:
+            pyrogram_app = Client(
+                "music_bot_session",
+                api_id=API_ID,
+                api_hash=API_HASH,
+                bot_token=BOT_TOKEN,
+            )
+            pytgcalls_client = PyTgCalls(pyrogram_app)
+
+            # Stream tugaganda keyingi qo'shiqni chalish
+            @pytgcalls_client.on_stream_end()
+            async def on_stream_end(client, update):
+                chat_id = update.chat_id
+                # Hozirgi faylni o'chirish
+                current = now_playing.get(chat_id)
+                if current:
+                    try:
+                        if os.path.exists(current.get("file", "")):
+                            os.remove(current["file"])
+                    except Exception:
+                        pass
+                # Keyingi qo'shiq
+                await _play_next(chat_id)
+
+            logger.info("✅ PyTgCalls tayyor! Voice Chat streaming ishlaydi.")
+        except Exception as e:
+            logger.error(f"PyTgCalls xatosi: {e}")
+            pytgcalls_client = None
+    else:
+        logger.warning("⚠️ PyTgCalls o'rnatilmagan! Faqat fayl yuborish ishlaydi.")
+
+    # ── PTB application ──
     app = Application.builder().token(BOT_TOKEN).build()
 
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("panel",  cmd_panel))
     app.add_handler(CommandHandler("play",   cmd_play))
     app.add_handler(CommandHandler("music",  cmd_play))
-    app.add_handler(CommandHandler("help",   cmd_play))
+    app.add_handler(CommandHandler("skip",   cmd_skip))
+    app.add_handler(CommandHandler("stop",   cmd_stop))
+    app.add_handler(CommandHandler("queue",  cmd_queue))
 
     app.add_handler(ChatMemberHandler(track_bot,               ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(ChatMemberHandler(track_new_member_invite, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
-
     app.add_handler(CallbackQueryHandler(on_callback))
 
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
         handle_admin_pm
     ))
-
     app.add_handler(MessageHandler(
         filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
         handle_group_message
@@ -2014,22 +2287,48 @@ def main():
         handle_group_message
     ))
 
-    # ✅ TUZATILDI: job_queue None bo'lmasdan ishlaydi
     if app.job_queue:
         app.job_queue.run_repeating(send_group_invite_message, interval=INVITE_INTERVAL, first=30)
     else:
-        logger.warning("job_queue mavjud emas! requirements.txt da python-telegram-bot[job-queue] bo'lishi kerak.")
+        logger.warning("job_queue mavjud emas!")
 
     ch_username, _ = get_channel_settings()
     logger.info("=" * 65)
     logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI!")
-    logger.info(f"🎵 Musiqa buyruq:       /play [nom]")
-    logger.info(f"🔔 Majburiy kanal:      {ch_username or 'Ornatilmagan'}")
+    logger.info(f"🎵 Voice Chat streaming: {'✅ HAY' if PYTGCALLS_AVAILABLE and pytgcalls_client else '❌ YOQ (fallback)'}")
+    logger.info(f"🎵 Buyruqlar: /play /skip /stop /queue")
+    logger.info(f"🔔 Majburiy kanal: {ch_username or 'Ornatilmagan'}")
     logger.info(f"👥 Yozish uchun taklif: {REQUIRED_INVITES} ta do'st")
-    logger.info(f"🔇 Mute muddati:        {MUTE_DURATION} daqiqa")
     logger.info("=" * 65)
 
-    app.run_polling(allowed_updates=Update.ALL_TYPES)
+    # ── Ikkalasini parallel ishga tushirish ──
+    async def run_all():
+        if pytgcalls_client and pyrogram_app:
+            await pyrogram_app.start()
+            await pytgcalls_client.start()
+        await app.initialize()
+        await app.start()
+        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        # To'xtamaguncha kutish
+        import signal
+        stop_event = asyncio.Event()
+        def _stop(*_):
+            stop_event.set()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                asyncio.get_event_loop().add_signal_handler(sig, _stop)
+            except Exception:
+                pass
+        await stop_event.wait()
+        # Tozalash
+        await app.updater.stop()
+        await app.stop()
+        await app.shutdown()
+        if pytgcalls_client and pyrogram_app:
+            await pytgcalls_client.stop()
+            await pyrogram_app.stop()
+
+    asyncio.run(run_all())
 
 
 if __name__ == "__main__":
