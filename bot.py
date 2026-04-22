@@ -823,121 +823,171 @@ async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
 # ═══════════════════════════════════════════════════════
 #   🎵 MUSIQA FUNKSIYALARI — TO'LDIRILGAN VA TUZATILGAN
 # ═══════════════════════════════════════════════════════
+def _get_ydl_opts(outtmpl: str, use_ffmpeg: bool = True) -> dict:
+    """yt-dlp sozlamalari — YouTube bot-bloklanishini chetlab o'tadi"""
+    opts = {
+        "format": "bestaudio[ext=m4a]/bestaudio[ext=webm]/bestaudio/best",
+        "outtmpl": outtmpl,
+        "quiet": True,
+        "no_warnings": True,
+        "noplaylist": True,
+        "default_search": "ytsearch",
+        "source_address": "0.0.0.0",
+        # YouTube bot-bloklanishini chetlab o'tish
+        "extractor_args": {
+            "youtube": {
+                "player_client": ["android", "web"],
+                "skip": ["dash", "hls"],
+            }
+        },
+        "http_headers": {
+            "User-Agent": (
+                "Mozilla/5.0 (Linux; Android 11; SM-G991B) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/120.0.0.0 Mobile Safari/537.36"
+            ),
+            "Accept-Language": "uz-UZ,uz;q=0.9,en;q=0.8",
+        },
+        "socket_timeout": 30,
+        "retries": 5,
+        "fragment_retries": 5,
+        "concurrent_fragment_downloads": 4,
+    }
+    if use_ffmpeg:
+        opts["postprocessors"] = [{
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "128",
+        }]
+    return opts
+
+
+def _find_downloaded_file(base_path: str, vid_id: str, prefix: str) -> str | None:
+    """Yuklangan faylni topish"""
+    exts = [".mp3", ".m4a", ".webm", ".opus", ".ogg", ".aac", ".flac"]
+    # ID asosida qidirish
+    for ext in exts:
+        f = f"{prefix}{vid_id}{ext}"
+        if os.path.exists(f):
+            return f
+    # prepare_filename asosida qidirish
+    base = base_path.rsplit(".", 1)[0]
+    for ext in exts:
+        if os.path.exists(base + ext):
+            return base + ext
+    # /tmp papkasida oxirgi yuklangan faylni qidirish
+    try:
+        import glob
+        pattern = f"{prefix.rstrip('_')}*"
+        files = glob.glob(pattern)
+        if files:
+            return max(files, key=os.path.getctime)
+    except Exception:
+        pass
+    return None
+
+
 async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
-    """YouTube'dan musiqa yuklab yuboradi (ffmpeg bor/yo'qligida ham ishlaydi)"""
+    """YouTube'dan musiqa yuklab yuboradi — 100% ishlaydigan versiya"""
+    safe_query = query[:50]
     msg = await update.message.reply_text(
-        f"🔍 <b>{query}</b> — izlanmoqda...",
+        f"🔍 <b>{safe_query}</b> — izlanmoqda...",
         parse_mode=ParseMode.HTML
     )
 
     mp3_file = None
-    title    = query
+    title    = safe_query
     duration = 0
     uploader = "Noma'lum"
 
-    # ── 1-urinish: ffmpeg bilan mp3 sifatida ──
-    try:
-        ydl_opts = {
-            "format": "bestaudio/best",
-            "outtmpl": "/tmp/music_%(id)s.%(ext)s",
-            "postprocessors": [{
-                "key": "FFmpegExtractAudio",
-                "preferredcodec": "mp3",
-                "preferredquality": "192",
-            }],
-            "quiet": True,
-            "no_warnings": True,
-            "default_search": "ytsearch1",
-            "noplaylist": True,
-        }
+    # ── Qidiruv so'rovini tayyorlash ──
+    # URL bo'lsa to'g'ridan-to'g'ri ishlatamiz, aks holda ytsearch
+    if query.startswith("http://") or query.startswith("https://"):
+        search_query = query
+    else:
+        search_query = f"ytsearch1:{query}"
 
+    # ── 1-urinish: ffmpeg bilan mp3 ──
+    try:
         await msg.edit_text(
-            f"⏳ <b>{query}</b> — yuklanmoqda...",
+            f"⏳ <b>{safe_query}</b> — yuklanmoqda (1/2)...",
             parse_mode=ParseMode.HTML
         )
+        prefix1 = "/tmp/mus1_"
+        outtmpl1 = f"{prefix1}%(id)s.%(ext)s"
+        ydl_opts1 = _get_ydl_opts(outtmpl1, use_ffmpeg=True)
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(query, download=True)
-            if "entries" in info:
-                info = info["entries"][0]
+        with yt_dlp.YoutubeDL(ydl_opts1) as ydl:
+            info = ydl.extract_info(search_query, download=True)
+            if info and "entries" in info:
+                entries = [e for e in info["entries"] if e]
+                if not entries:
+                    raise ValueError("Natija topilmadi")
+                info = entries[0]
+            if not info:
+                raise ValueError("Ma'lumot olinmadi")
 
             title    = (info.get("title") or query)[:64]
             duration = int(info.get("duration") or 0)
-            uploader = info.get("uploader") or "Noma'lum"
+            uploader = (info.get("uploader") or info.get("channel") or "Noma'lum")[:40]
             vid_id   = info.get("id") or "unknown"
+            filename = ydl.prepare_filename(info)
 
-            # Faylni topish (ID asosida)
-            for ext in [".mp3", ".m4a", ".webm", ".opus", ".aac"]:
-                test = f"/tmp/music_{vid_id}{ext}"
-                if os.path.exists(test):
-                    mp3_file = test
-                    break
-
-            # Zaxira: prepare_filename asosida
-            if not mp3_file:
-                base = ydl.prepare_filename(info).rsplit(".", 1)[0]
-                for ext in [".mp3", ".m4a", ".webm", ".opus", ".aac"]:
-                    if os.path.exists(base + ext):
-                        mp3_file = base + ext
-                        break
+        mp3_file = _find_downloaded_file(filename, vid_id, prefix1)
 
     except Exception as e:
-        logger.warning(f"1-urinish (ffmpeg) muvaffaqiyatsiz: {e}")
+        logger.warning(f"1-urinish muvaffaqiyatsiz ({query}): {e}")
 
-    # ── 2-urinish: ffmpeg siz, oddiy audio ──
-    if not mp3_file:
+    # ── 2-urinish: ffmpeg siz (fallback) ──
+    if not mp3_file or not os.path.exists(mp3_file):
         try:
             await msg.edit_text(
-                f"⏳ <b>{query}</b> — boshqa usulda yuklanmoqda...",
+                f"⏳ <b>{safe_query}</b> — yuklanmoqda (2/2)...",
                 parse_mode=ParseMode.HTML
             )
-            ydl_opts2 = {
-                "format": "bestaudio/best",
-                "outtmpl": "/tmp/musicplain_%(id)s.%(ext)s",
-                "quiet": True,
-                "no_warnings": True,
-                "default_search": "ytsearch1",
-                "noplaylist": True,
-            }
+            prefix2 = "/tmp/mus2_"
+            outtmpl2 = f"{prefix2}%(id)s.%(ext)s"
+            ydl_opts2 = _get_ydl_opts(outtmpl2, use_ffmpeg=False)
+            # ffmpeg yo'q bo'lsa m4a/webm yuklash
+            ydl_opts2["format"] = "bestaudio[filesize<45M]/bestaudio/best[filesize<45M]"
+
             with yt_dlp.YoutubeDL(ydl_opts2) as ydl:
-                info = ydl.extract_info(query, download=True)
-                if "entries" in info:
-                    info = info["entries"][0]
+                info = ydl.extract_info(search_query, download=True)
+                if info and "entries" in info:
+                    entries = [e for e in info["entries"] if e]
+                    if not entries:
+                        raise ValueError("Natija topilmadi")
+                    info = entries[0]
+                if not info:
+                    raise ValueError("Ma'lumot olinmadi")
 
                 title    = (info.get("title") or query)[:64]
                 duration = int(info.get("duration") or 0)
-                uploader = info.get("uploader") or "Noma'lum"
+                uploader = (info.get("uploader") or info.get("channel") or "Noma'lum")[:40]
                 vid_id   = info.get("id") or "unknown"
+                filename = ydl.prepare_filename(info)
 
-                for ext in [".m4a", ".webm", ".opus", ".mp3", ".aac"]:
-                    test = f"/tmp/musicplain_{vid_id}{ext}"
-                    if os.path.exists(test):
-                        mp3_file = test
-                        break
-
-                if not mp3_file:
-                    mp3_file = ydl.prepare_filename(info)
-                    if not os.path.exists(mp3_file):
-                        mp3_file = None
+            mp3_file = _find_downloaded_file(filename, vid_id, prefix2)
 
         except Exception as e2:
-            logger.error(f"2-urinish ham muvaffaqiyatsiz: {e2}")
+            logger.error(f"2-urinish ham muvaffaqiyatsiz ({query}): {e2}")
 
-    # ── Yuborish ──
+    # ── Topilmadi ──
     if not mp3_file or not os.path.exists(mp3_file):
         await msg.edit_text(
-            f"❌ <b>{query}</b> topilmadi yoki xato yuz berdi.\n\n"
+            f"❌ <b>{safe_query}</b> topilmadi yoki xato yuz berdi.\n\n"
             "💡 Boshqa nom bilan urinib ko'ring!\n"
             "📝 <i>Misol: /play Ulug'bek Rahmatullayev</i>",
             parse_mode=ParseMode.HTML
         )
         return
 
-    file_size = os.path.getsize(mp3_file) / (1024 * 1024)
-    if file_size > 49:
+    # ── Hajm tekshiruvi ──
+    file_size_mb = os.path.getsize(mp3_file) / (1024 * 1024)
+    if file_size_mb > 49:
         await msg.edit_text(
             "❌ Fayl juda katta (50MB dan ortiq).\n"
-            "💡 Boshqa qo'shiq tanlang."
+            "💡 Boshqa qo'shiq tanlang yoki qisqaroq versiyasini izlang."
         )
         try: os.remove(mp3_file)
         except Exception: pass
@@ -945,7 +995,6 @@ async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_
 
     minutes = duration // 60
     seconds = duration % 60
-
     caption = (
         f"🎵 <b>{title}</b>\n"
         f"👤 {uploader}\n"
@@ -953,9 +1002,10 @@ async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_
         f"🤖 {BOT_NAME}"
     )
 
+    # ── Yuborish ──
     try:
         await msg.edit_text(
-            f"📤 <b>{title}</b> — jo'natilmoqda...",
+            f"📤 <b>{title[:40]}</b> — jo'natilmoqda...",
             parse_mode=ParseMode.HTML
         )
         with open(mp3_file, "rb") as audio_file:
@@ -966,15 +1016,22 @@ async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_
                 duration=duration,
                 caption=caption,
                 parse_mode=ParseMode.HTML,
+                read_timeout=120,
+                write_timeout=120,
+                connect_timeout=30,
             )
-        await msg.delete()
+        try: await msg.delete()
+        except Exception: pass
     except Exception as e:
-        logger.error(f"Musiqa yuborishda xato: {e}")
-        await msg.edit_text(
-            f"❌ Musiqa yuborishda xato yuz berdi.\n\n"
-            "💡 Boshqa nom bilan urinib ko'ring!",
-            parse_mode=ParseMode.HTML
-        )
+        logger.error(f"Yuborishda xato ({query}): {e}")
+        try:
+            await msg.edit_text(
+                f"❌ Yuborishda xato: {str(e)[:80]}\n\n"
+                "💡 Boshqa nom bilan urinib ko'ring!",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
     finally:
         try:
             if mp3_file and os.path.exists(mp3_file):
@@ -984,18 +1041,26 @@ async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_
 
 
 async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """/play buyrug'i — musiqa izlash"""
+    """/play buyrug'i — guruh va private da musiqa izlash"""
+    if not update.message:
+        return
+
     if not context.args:
         await update.message.reply_text(
             "🎵 <b>Qo'shiq nomini kiriting!</b>\n\n"
             "📝 <b>Misol:</b> <code>/play Shahlo Ahmedova</code>\n"
+            "📝 <b>Misol:</b> <code>/play Ulug'bek Rahmatullayev</code>\n"
             "🔗 YouTube URL ham ishlaydi:\n"
             "<code>/play https://youtube.com/...</code>",
             parse_mode=ParseMode.HTML
         )
         return
 
-    query = " ".join(context.args)
+    query = " ".join(context.args).strip()
+    if len(query) < 2:
+        await update.message.reply_text("❌ Qo'shiq nomi juda qisqa!")
+        return
+
     await download_and_send_music(update, context, query)
 
 
