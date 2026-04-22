@@ -33,6 +33,7 @@ import random
 import urllib.parse
 import os
 import glob
+import sys
 from datetime import datetime, timedelta
 
 from telegram import (
@@ -63,9 +64,9 @@ except ImportError:
 # ═══════════════════════════════════════════════════════
 #                    ⚙️ ASOSIY SOZLAMALAR
 # ═══════════════════════════════════════════════════════
-BOT_TOKEN        = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"  # ← o'zgartirmang
-ADMIN_IDS        = [8537782289]
-BOT_NAME         = "@GuruhYordamchIUZBBOT"
+BOT_TOKEN        = os.environ.get("BOT_TOKEN", "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk")
+ADMIN_IDS        = [int(x) for x in os.environ.get("ADMIN_IDS", "8537782289").split(",")]
+BOT_NAME         = os.environ.get("BOT_NAME", "@GuruhYordamchIUZBBOT")
 INVITE_INTERVAL  = 120
 REQUIRED_INVITES = 2
 MUTE_DURATION    = 10
@@ -74,8 +75,8 @@ MUTE_DURATION    = 10
 #   🔑 my.telegram.org dan olingan API kalitlar
 #   https://my.telegram.org → API development tools
 # ════════════════════════════════════════════════════════
-API_ID   = 37366974          # ← O'ZGARTIRING: my.telegram.org dan
-API_HASH = "08d09c7ed8b7cb414ed6a99c104f1bd6"   # ← O'ZGARTIRING: my.telegram.org dan
+API_ID   = int(os.environ.get("API_ID", "37366974"))
+API_HASH = os.environ.get("API_HASH", "08d09c7ed8b7cb414ed6a99c104f1bd6")
 
 INVITE_MESSAGE = (
     "👋 <b>Assalom aleykum birodarlar!</b>\n\n"
@@ -2457,10 +2458,11 @@ def main():
     if PYTGCALLS_AVAILABLE:
         try:
             pyrogram_app = Client(
-                "music_bot_session",
+                "music_session",
                 api_id=API_ID,
                 api_hash=API_HASH,
-                bot_token=BOT_TOKEN,
+                # bot_token YO'Q — userbot session bilan ishlaydi
+                # Birinchi ishga tushishda telefon raqam va kod so'raydi
             )
             pytgcalls_client = PyTgCalls(pyrogram_app)
 
