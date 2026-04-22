@@ -14,7 +14,7 @@
 # ╚══════════════════════════════════════════════════════════════════════╝
 #
 # 💡 ISHGA TUSHIRISH:
-#   pip install "python-telegram-bot[job-queue]==20.7" yt-dlp pyrogram==2.0.106 pytgcalls==3.0.0.dev29
+#   pip install "python-telegram-bot[job-queue]==20.7" yt-dlp pyrogram==2.0.106 pytgcalls
 #   sudo apt install ffmpeg
 #
 # ⚙️ API_ID va API_HASH olish:
@@ -57,7 +57,7 @@ try:
 except ImportError:
     PYTGCALLS_AVAILABLE = False
     print("⚠️  pytgcalls/pyrogram o'rnatilmagan! Faqat fayl yuborish ishlaydi.")
-    print("    pip install pyrogram==2.0.106 pytgcalls==3.0.0.dev29")
+    print("    pip install pyrogram==2.0.106 pytgcalls")
 
 
 # ═══════════════════════════════════════════════════════
@@ -985,7 +985,7 @@ async def _play_next(chat_id: int, tg_bot=None):
         # Voice chat'dan chiqish
         if pytgcalls_client:
             try:
-                await pytgcalls_client.leave_group_call(chat_id)
+                await pytgcalls_client.leave(chat_id)
             except Exception:
                 pass
         return
@@ -995,7 +995,7 @@ async def _play_next(chat_id: int, tg_bot=None):
 
     try:
         if PYTGCALLS_AVAILABLE and pytgcalls_client:
-            await pytgcalls_client.join_group_call(
+            await pytgcalls_client.play(
                 chat_id,
                 MediaStream(
                     song["file"],
@@ -1431,7 +1431,7 @@ async def cmd_stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if PYTGCALLS_AVAILABLE and pytgcalls_client:
         try:
-            await pytgcalls_client.leave_group_call(chat_id)
+            await pytgcalls_client.leave(chat_id)
         except Exception:
             pass
 
@@ -2070,7 +2070,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         music_queues.pop(chat_id, None)
         now_playing.pop(chat_id, None)
         if PYTGCALLS_AVAILABLE and pytgcalls_client:
-            try: await pytgcalls_client.leave_group_call(chat_id)
+            try: await pytgcalls_client.leave(chat_id)
             except Exception: pass
         await q.edit_message_reply_markup(reply_markup=None)
         await context.bot.send_message(chat_id=chat_id, text="⏹ Musiqa to'xtatildi!")
