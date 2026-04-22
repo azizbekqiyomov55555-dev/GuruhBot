@@ -1,33 +1,30 @@
 # ╔══════════════════════════════════════════════════════════════════════╗
-# ║   🤖 YORDAMCHI + TEKSHIRISH + 🎵 MUSIQA BOT — BIRLASHTIRILGAN v2  ║
+# ║   🤖 YORDAMCHI + TEKSHIRISH + 🎵 MUSIQA BOT — BIRLASHTIRILGAN v3  ║
 # ║   ✅ /start bosgan foydalanuvchilarni saqlash                      ║
 # ║   ✅ Admin panel — foydalanuvchini ID bo'yicha tekshirish          ║
 # ║   ✅ Foydalanuvchi ismi, ID, guruhlari, yozgan guruhlari           ║
 # ║   ✅ Obuna bo'lgan kanallar (bot admin bo'lgan kanallar)           ║
 # ║   ✅ Guruhda yozish uchun kanalga OBUNA bo'lish shart              ║
 # ║   ✅ Guruhda yozish uchun 2 DO'ST TAKLIF qilish shart             ║
-# ║   ✅ Har 2 daqiqada taklif xabari                                   ║
-# ║   ✅ Taklif qilgan odam maqtaladi                                   ║
-# ║   ✅ JONLI EFIR boshqaruvi (yoqish/o'chirish)                      ║
-# ║   ✅ So'kingan foydalanuvchini avtomatik MUTE qilish               ║
-# ║   ✅ Admin qo'shishda HUQUQLARNI SO'RASH (inline tanlov)           ║
-# ║   ✅ Foydalanuvchini BAN / KICK / UNBAN qilish                     ║
-# ║   ✅ Pastki menyu tugmalari (ReplyKeyboard)                        ║
-# ║   🎵 /play [qo'shiq nomi] — YouTube'dan musiqa yuklash            ║
-# ║   🎵 Guruhga yangi a'zo qo'shilganda musiqa xabari                ║
-# ║   🎵 Guruhda /play buyrug'i bilan musiqa izlash                    ║
+# ║   ✅ Har 2 daqiqada taklif xabari                                  ║
+# ║   ✅ Taklif qilgan odam maqtaladi                                  ║
+# ║   ✅ JONLI EFIR boshqaruvi (yoqish/o'chirish)                     ║
+# ║   ✅ So'kingan foydalanuvchini avtomatik MUTE qilish              ║
+# ║   ✅ Admin qo'shishda HUQUQLARNI SO'RASH (inline tanlov)          ║
+# ║   ✅ Foydalanuvchini BAN / KICK / UNBAN qilish                    ║
+# ║   ✅ Pastki menyu tugmalari (ReplyKeyboard)                       ║
+# ║   🎵 /play [qo'shiq nomi] — YouTube'dan musiqa yuklash           ║
+# ║   🎵 Guruhga yangi a'zo qo'shilganda musiqa xabari               ║
+# ║   🎵 Guruhda /play buyrug'i bilan musiqa izlash                   ║
 # ╚══════════════════════════════════════════════════════════════════════╝
 #
 # 💡 ISHGA TUSHIRISH:
-#   pip install python-telegram-bot==20.7 yt-dlp
-#   sudo apt install ffmpeg   (Linux) yoki ffmpeg.org (Windows)
+#   pip install "python-telegram-bot[job-queue]==20.7" yt-dlp
+#   sudo apt install ffmpeg
 #
 # ⚙️ BOT SOZLAMALARI (@BotFather):
 #   1. Bot Settings → Group Privacy → DISABLE
 #   2. Botni guruhga ADMIN qiling
-#   3. Admin ruxsatlari: ✅ Invite Users, ✅ Add Members,
-#      ✅ Delete Messages, ✅ Restrict Members,
-#      ✅ Promote Members, ✅ Ban Users
 
 import logging
 import sqlite3
@@ -54,12 +51,12 @@ import yt_dlp
 # ═══════════════════════════════════════════════════════
 #                    ⚙️ ASOSIY SOZLAMALAR
 # ═══════════════════════════════════════════════════════
-BOT_TOKEN        = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"   # ← @BotFather dan olingan token
-ADMIN_IDS        = [8537782289]                  # ← O'z admin ID ingizni kiriting
+BOT_TOKEN        = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk"
+ADMIN_IDS        = [8537782289]
 BOT_NAME         = "@GuruhYordamchIUZBBOT"
-INVITE_INTERVAL  = 120   # sekund (har 2 daqiqada taklif xabari)
-REQUIRED_INVITES = 2     # guruhda yozish uchun kerakli taklif soni
-MUTE_DURATION    = 10    # daqiqa (so'kingan odamni mute qilish muddati)
+INVITE_INTERVAL  = 120
+REQUIRED_INVITES = 2
+MUTE_DURATION    = 10
 
 INVITE_MESSAGE = (
     "👋 <b>Assalom aleykum birodarlar!</b>\n\n"
@@ -68,10 +65,7 @@ INVITE_MESSAGE = (
     "👇 Tugmani bosing va taklif qiling!"
 )
 
-# Xotirada saqlanadigan taklif linklari: link → (user_id, user_name, chat_id)
 invite_links_db: dict = {}
-
-# Musiqa kutish holati: user_id → True
 waiting_for_music: dict = {}
 
 
@@ -827,19 +821,25 @@ async def send_group_invite_message(context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 # ═══════════════════════════════════════════════════════
-#   🎵 MUSIQA FUNKSIYALARI
+#   🎵 MUSIQA FUNKSIYALARI — TO'LDIRILGAN VA TUZATILGAN
 # ═══════════════════════════════════════════════════════
 async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_TYPE, query: str):
-    """YouTube'dan musiqa yuklab yuboradi"""
+    """YouTube'dan musiqa yuklab yuboradi (ffmpeg bor/yo'qligida ham ishlaydi)"""
     msg = await update.message.reply_text(
         f"🔍 <b>{query}</b> — izlanmoqda...",
         parse_mode=ParseMode.HTML
     )
 
+    mp3_file = None
+    title    = query
+    duration = 0
+    uploader = "Noma'lum"
+
+    # ── 1-urinish: ffmpeg bilan mp3 sifatida ──
     try:
         ydl_opts = {
             "format": "bestaudio/best",
-            "outtmpl": "/tmp/%(title)s.%(ext)s",
+            "outtmpl": "/tmp/music_%(id)s.%(ext)s",
             "postprocessors": [{
                 "key": "FFmpegExtractAudio",
                 "preferredcodec": "mp3",
@@ -851,75 +851,136 @@ async def download_and_send_music(update: Update, context: ContextTypes.DEFAULT_
             "noplaylist": True,
         }
 
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            await msg.edit_text(
-                f"⏳ <b>{query}</b> — yuklanmoqda...",
-                parse_mode=ParseMode.HTML
-            )
-            info = ydl.extract_info(query, download=True)
+        await msg.edit_text(
+            f"⏳ <b>{query}</b> — yuklanmoqda...",
+            parse_mode=ParseMode.HTML
+        )
 
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(query, download=True)
             if "entries" in info:
                 info = info["entries"][0]
 
-            title    = info.get("title", query)
-            duration = info.get("duration", 0)
-            uploader = info.get("uploader", "Noma'lum")
+            title    = (info.get("title") or query)[:64]
+            duration = int(info.get("duration") or 0)
+            uploader = info.get("uploader") or "Noma'lum"
+            vid_id   = info.get("id") or "unknown"
 
-            filename = ydl.prepare_filename(info)
-            mp3_file = filename.rsplit(".", 1)[0] + ".mp3"
+            # Faylni topish (ID asosida)
+            for ext in [".mp3", ".m4a", ".webm", ".opus", ".aac"]:
+                test = f"/tmp/music_{vid_id}{ext}"
+                if os.path.exists(test):
+                    mp3_file = test
+                    break
 
-            if not os.path.exists(mp3_file):
-                for ext in [".mp3", ".m4a", ".webm", ".opus"]:
-                    test_file = filename.rsplit(".", 1)[0] + ext
-                    if os.path.exists(test_file):
-                        mp3_file = test_file
+            # Zaxira: prepare_filename asosida
+            if not mp3_file:
+                base = ydl.prepare_filename(info).rsplit(".", 1)[0]
+                for ext in [".mp3", ".m4a", ".webm", ".opus", ".aac"]:
+                    if os.path.exists(base + ext):
+                        mp3_file = base + ext
                         break
 
-            if not os.path.exists(mp3_file):
-                await msg.edit_text("❌ Fayl topilmadi. Boshqa nom bilan urinib ko'ring.")
-                return
+    except Exception as e:
+        logger.warning(f"1-urinish (ffmpeg) muvaffaqiyatsiz: {e}")
 
-            file_size = os.path.getsize(mp3_file) / (1024 * 1024)
-            if file_size > 49:
-                await msg.edit_text("❌ Fayl juda katta (50MB dan ortiq). Boshqa qo'shiq tanlang.")
-                os.remove(mp3_file)
-                return
-
-            minutes = duration // 60
-            seconds = duration % 60
-
-            caption = (
-                f"🎵 <b>{title}</b>\n"
-                f"👤 {uploader}\n"
-                f"⏱ {minutes}:{seconds:02d}\n\n"
-                f"🤖 {BOT_NAME}"
-            )
-
+    # ── 2-urinish: ffmpeg siz, oddiy audio ──
+    if not mp3_file:
+        try:
             await msg.edit_text(
-                f"📤 <b>{title}</b> — jo'natilmoqda...",
+                f"⏳ <b>{query}</b> — boshqa usulda yuklanmoqda...",
                 parse_mode=ParseMode.HTML
             )
+            ydl_opts2 = {
+                "format": "bestaudio/best",
+                "outtmpl": "/tmp/musicplain_%(id)s.%(ext)s",
+                "quiet": True,
+                "no_warnings": True,
+                "default_search": "ytsearch1",
+                "noplaylist": True,
+            }
+            with yt_dlp.YoutubeDL(ydl_opts2) as ydl:
+                info = ydl.extract_info(query, download=True)
+                if "entries" in info:
+                    info = info["entries"][0]
 
-            with open(mp3_file, "rb") as audio_file:
-                await update.message.reply_audio(
-                    audio=audio_file,
-                    title=title,
-                    performer=uploader,
-                    caption=caption,
-                    parse_mode=ParseMode.HTML,
-                )
+                title    = (info.get("title") or query)[:64]
+                duration = int(info.get("duration") or 0)
+                uploader = info.get("uploader") or "Noma'lum"
+                vid_id   = info.get("id") or "unknown"
 
-            os.remove(mp3_file)
-            await msg.delete()
+                for ext in [".m4a", ".webm", ".opus", ".mp3", ".aac"]:
+                    test = f"/tmp/musicplain_{vid_id}{ext}"
+                    if os.path.exists(test):
+                        mp3_file = test
+                        break
 
-    except Exception as e:
-        logger.error(f"Musiqa yuklab olishda xato: {e}")
+                if not mp3_file:
+                    mp3_file = ydl.prepare_filename(info)
+                    if not os.path.exists(mp3_file):
+                        mp3_file = None
+
+        except Exception as e2:
+            logger.error(f"2-urinish ham muvaffaqiyatsiz: {e2}")
+
+    # ── Yuborish ──
+    if not mp3_file or not os.path.exists(mp3_file):
         await msg.edit_text(
             f"❌ <b>{query}</b> topilmadi yoki xato yuz berdi.\n\n"
             "💡 Boshqa nom bilan urinib ko'ring!\n"
             "📝 <i>Misol: /play Ulug'bek Rahmatullayev</i>",
             parse_mode=ParseMode.HTML
         )
+        return
+
+    file_size = os.path.getsize(mp3_file) / (1024 * 1024)
+    if file_size > 49:
+        await msg.edit_text(
+            "❌ Fayl juda katta (50MB dan ortiq).\n"
+            "💡 Boshqa qo'shiq tanlang."
+        )
+        try: os.remove(mp3_file)
+        except Exception: pass
+        return
+
+    minutes = duration // 60
+    seconds = duration % 60
+
+    caption = (
+        f"🎵 <b>{title}</b>\n"
+        f"👤 {uploader}\n"
+        f"⏱ {minutes}:{seconds:02d}\n\n"
+        f"🤖 {BOT_NAME}"
+    )
+
+    try:
+        await msg.edit_text(
+            f"📤 <b>{title}</b> — jo'natilmoqda...",
+            parse_mode=ParseMode.HTML
+        )
+        with open(mp3_file, "rb") as audio_file:
+            await update.message.reply_audio(
+                audio=audio_file,
+                title=title,
+                performer=uploader,
+                duration=duration,
+                caption=caption,
+                parse_mode=ParseMode.HTML,
+            )
+        await msg.delete()
+    except Exception as e:
+        logger.error(f"Musiqa yuborishda xato: {e}")
+        await msg.edit_text(
+            f"❌ Musiqa yuborishda xato yuz berdi.\n\n"
+            "💡 Boshqa nom bilan urinib ko'ring!",
+            parse_mode=ParseMode.HTML
+        )
+    finally:
+        try:
+            if mp3_file and os.path.exists(mp3_file):
+                os.remove(mp3_file)
+        except Exception:
+            pass
 
 
 async def cmd_play(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -1005,7 +1066,6 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
             add_group(chat.id, chat.title, chat.username)
             logger.info(f"✅ Guruhga qo'shildi: {chat.title} ({chat.id})")
-            # Guruhga qo'shilganda salom + musiqa xabari
             try:
                 await context.bot.send_message(
                     chat_id=chat.id,
@@ -1035,7 +1095,6 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if status == ChatMember.ADMINISTRATOR:
             save_channel(chat.id, chat.title, chat.username)
             logger.info(f"✅ Kanalga admin qo'shildi: {chat.title} ({chat.id})")
-            # Kanalga qo'shilganda xabar
             try:
                 await context.bot.send_message(
                     chat_id=chat.id,
@@ -1116,6 +1175,7 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
     msg  = update.message
     if not user or not msg or chat.type not in ("group", "supergroup"):
         return
+
     if user.is_bot:
         return
     if is_banned_group(chat.id):
@@ -1172,7 +1232,6 @@ async def handle_group_message(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user = update.effective_user
     if not is_admin(user.id) or update.effective_chat.type != "private":
-        # Oddiy foydalanuvchi — musiqa izlash uchun kutish holati
         text = update.message.text or ""
         if waiting_for_music.get(user.id):
             waiting_for_music[user.id] = False
@@ -1465,7 +1524,6 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def on_callback_invite_manage(update_or_query, context):
-    """Taklif boshqaruvi — tugma yoki matn orqali"""
     groups = get_all_groups()
     active_groups = [(g[0], g[1]) for g in groups if g[5] == 0]
     text = "🔗 <b>Taklif Boshqaruvi</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1493,7 +1551,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     d = q.data or ""
     user = q.from_user
 
-    # ── Musiqa izlash ──
     if d == "music_search":
         waiting_for_music[user.id] = True
         await q.message.reply_text(
@@ -1504,13 +1561,11 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    # ── Taklif tugmasi ──
     if d.startswith("invite_"):
         gid = int(d.split("_", 1)[1])
         await handle_invite_button(q, context, gid)
         return
 
-    # ── Obuna tekshirish ──
     if d.startswith("check_sub_"):
         gid = int(d.split("_")[-1])
         ch_username, ch_link = get_channel_settings()
@@ -1528,7 +1583,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("❌ Siz hali obuna bo'lmagansiz!", show_alert=True)
         return
 
-    # ── Guruhda yozish — obuna tekshirish ──
     if d.startswith("check_write_sub_"):
         chat_id = int(d.split("_")[-1])
         is_sub = await check_subscription(context.bot, user.id)
@@ -1541,7 +1595,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await q.answer("❌ Siz hali obuna bo'lmagansiz!", show_alert=True)
         return
 
-    # ── Taklif toggle ──
     if d.startswith("inv_toggle_"):
         cid = int(d.split("_")[-1])
         current = get_invite_disabled(cid)
@@ -1560,7 +1613,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="invite_manage_menu")]]))
         return
 
-    # ── Admin panel tugmalari ──
     if d == "back_admin" or d == "settings":
         if not is_admin(user.id):
             await q.answer("❌ Ruxsat yo'q!", show_alert=True)
@@ -1712,7 +1764,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await on_callback_invite_manage(q, context)
         return
 
-    # ── Admin manage ──
     if d == "admin_manage":
         if not is_admin(user.id):
             await q.answer("❌ Ruxsat yo'q!", show_alert=True)
@@ -1745,7 +1796,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="admin_manage")]]))
         return
 
-    # ── Ban/Kick/Unban ──
     if d == "ban_user_menu":
         await q.edit_message_text(
             "🚫 <b>Foydalanuvchini Ban qilish</b>\n━━━━━━━━━━━━━━━━━━━━\n\n"
@@ -1803,7 +1853,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="unban_user_menu")]]))
         return
 
-    # ── Livestream ──
     if d == "livestream_menu":
         if not is_admin(user.id):
             await q.answer("❌ Ruxsat yo'q!", show_alert=True)
@@ -1833,7 +1882,6 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await q.answer(f"Jonli efir {state}")
         return
 
-    # ─ Perm toggle ──
     if d.startswith("perm_toggle_"):
         parts = d.split("_")
         key = "_".join(parts[2:-2])
@@ -1875,46 +1923,41 @@ def main():
     init_db()
     app = Application.builder().token(BOT_TOKEN).build()
 
-    # Commandlar
     app.add_handler(CommandHandler("start",  cmd_start))
     app.add_handler(CommandHandler("panel",  cmd_panel))
-    app.add_handler(CommandHandler("play",   cmd_play))      # 🎵 MUSIQA
-    app.add_handler(CommandHandler("music",  cmd_play))      # 🎵 /music ham ishlaydi
-    app.add_handler(CommandHandler("help",   cmd_play))      # /help — play ga yo'naltirish
+    app.add_handler(CommandHandler("play",   cmd_play))
+    app.add_handler(CommandHandler("music",  cmd_play))
+    app.add_handler(CommandHandler("help",   cmd_play))
 
-    # Bot guruh/kanalga qo'shilganda
     app.add_handler(ChatMemberHandler(track_bot,               ChatMemberHandler.MY_CHAT_MEMBER))
-    # Yangi a'zo taklif tracking
     app.add_handler(ChatMemberHandler(track_new_member_invite, ChatMemberHandler.CHAT_MEMBER))
-    # Yangi a'zo xush kelibsiz
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, welcome_new_member))
 
-    # Callback tugmalar
     app.add_handler(CallbackQueryHandler(on_callback))
 
-    # Admin private xabarlar (va oddiy foydalanuvchi musiqa izlashi)
     app.add_handler(MessageHandler(
         filters.ChatType.PRIVATE & filters.TEXT & ~filters.COMMAND,
         handle_admin_pm
     ))
 
-    # Guruh: matnli xabarlar
     app.add_handler(MessageHandler(
         filters.ChatType.GROUPS & filters.TEXT & ~filters.COMMAND,
         handle_group_message
     ))
-    # Guruh: ovozli/video xabarlar (jonli efir bloki uchun)
     app.add_handler(MessageHandler(
         filters.ChatType.GROUPS & (filters.VOICE | filters.VIDEO_NOTE | filters.VIDEO) & ~filters.COMMAND,
         handle_group_message
     ))
 
-    # Har INVITE_INTERVAL sekundda taklif xabari
-    app.job_queue.run_repeating(send_group_invite_message, interval=INVITE_INTERVAL, first=30)
+    # ✅ TUZATILDI: job_queue None bo'lmasdan ishlaydi
+    if app.job_queue:
+        app.job_queue.run_repeating(send_group_invite_message, interval=INVITE_INTERVAL, first=30)
+    else:
+        logger.warning("job_queue mavjud emas! requirements.txt da python-telegram-bot[job-queue] bo'lishi kerak.")
 
     ch_username, _ = get_channel_settings()
     logger.info("=" * 65)
-    logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI! (Birlashtirilgan v2 + Musiqa)")
+    logger.info(f"🚀 {BOT_NAME} ISHGA TUSHDI!")
     logger.info(f"🎵 Musiqa buyruq:       /play [nom]")
     logger.info(f"🔔 Majburiy kanal:      {ch_username or 'Ornatilmagan'}")
     logger.info(f"👥 Yozish uchun taklif: {REQUIRED_INVITES} ta do'st")
