@@ -2954,23 +2954,53 @@ def main():
 
     init_db()
 
-    # ── PyTgCalls ni ishga tushirish (agar o'rnatilgan bo'lsa) ──
+    # ── PyTgCalls + Pyrogram ishga tushirish ──
     if PYTGCALLS_AVAILABLE:
         try:
-            pyrogram_app = Client(
-                "music_session",
-                api_id=API_ID,
-                api_hash=API_HASH,
-                # bot_token YO'Q — userbot session bilan ishlaydi
-                # Birinchi ishga tushishda telefon raqam va kod so'raydi
-            )
+            # ─────────────────────────────────────────────────────────
+            #  Session ustuvorligi:
+            #  1. SESSION_STRING  (env variable — eng ishonchli)
+            #  2. music_session.session  (fayl — lokal ishlatish uchun)
+            # ─────────────────────────────────────────────────────────
+            session_string = os.environ.get("SESSION_STRING", "").strip()
+
+            if session_string:
+                # String session — server restart bo'lsa ham ishlaydi
+                from pyrogram import enums as _pyro_enums
+                pyrogram_app = Client(
+                    "userbot",
+                    api_id=API_ID,
+                    api_hash=API_HASH,
+                    session_string=session_string,
+                )
+                logger.info("✅ Pyrogram: SESSION_STRING orqali ishga tushmoqda...")
+
+            elif os.path.exists("music_session.session"):
+                # Mavjud session fayl
+                pyrogram_app = Client(
+                    "music_session",
+                    api_id=API_ID,
+                    api_hash=API_HASH,
+                )
+                logger.info("✅ Pyrogram: music_session.session fayli topildi!")
+
+            else:
+                # Session yo'q — interaktiv yaratish (terminal orqali)
+                logger.warning("⚠️ Pyrogram session topilmadi!")
+                logger.warning("   Terminal orqali yaratilmoqda...")
+                logger.warning("   Telefon raqamingizni kiriting (+998...)")
+                pyrogram_app = Client(
+                    "music_session",
+                    api_id=API_ID,
+                    api_hash=API_HASH,
+                )
+
             pytgcalls_client = PyTgCalls(pyrogram_app)
 
             # Stream tugaganda keyingi qo'shiqni chalish
             @pytgcalls_client.on_stream_end()
             async def on_stream_end(client, update):
                 chat_id = update.chat_id
-                # Hozirgi faylni o'chirish
                 current = now_playing.get(chat_id)
                 if current:
                     try:
@@ -2978,13 +3008,13 @@ def main():
                             os.remove(current["file"])
                     except Exception:
                         pass
-                # Keyingi qo'shiq
                 await _play_next(chat_id)
 
             logger.info("✅ PyTgCalls tayyor! Voice Chat streaming ishlaydi.")
         except Exception as e:
             logger.error(f"PyTgCalls xatosi: {e}")
             pytgcalls_client = None
+            pyrogram_app = None
     else:
         logger.warning("⚠️ PyTgCalls o'rnatilmagan! Faqat fayl yuborish ishlaydi.")
 
@@ -3038,10 +3068,27 @@ def main():
         if pytgcalls_client and pyrogram_app:
             await pyrogram_app.start()
             await pytgcalls_client.start()
+
+            # ─── String session chiqarish (birinchi marta) ───
+            if not os.environ.get("SESSION_STRING"):
+                try:
+                    from pyrogram import Client as _C
+                    exported = await pyrogram_app.export_session_string()
+                    me = await pyrogram_app.get_me()
+                    logger.info("=" * 65)
+                    logger.info(f"✅ Pyrogram: {me.first_name} (@{me.username}) sifatida ulandi!")
+                    logger.info("")
+                    logger.info("🔑 SESSION_STRING (serverda ishlatish uchun saqlang):")
+                    logger.info(f"SESSION_STRING={exported}")
+                    logger.info("")
+                    logger.info("💡 Bu qatorni .env faylga yoki server env'ga qo'shing!")
+                    logger.info("=" * 65)
+                except Exception as e:
+                    logger.error(f"Session string export xatosi: {e}")
+
         await app.initialize()
         await app.start()
         await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
-        # To'xtamaguncha kutish
         import signal
         stop_event = asyncio.Event()
         def _stop(*_):
@@ -3052,7 +3099,6 @@ def main():
             except Exception:
                 pass
         await stop_event.wait()
-        # Tozalash
         await app.updater.stop()
         await app.stop()
         await app.shutdown()
