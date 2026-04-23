@@ -1759,57 +1759,91 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
 # ═══════════════════════════════════════════════════════
 async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
     """
-    Guruhdan o'chirilgan yoki xorijiy a'zolarni tozalash.
+    Guruh YOKI KANAL dan o'chirilgan / xorijiy a'zolarni tozalash.
     mode: 'deleted' | 'foreign'
+
     Qaytaradi: (tekshirilgan, chiqarilgan)
-    Pyrogram bo'lmasa ham Bot API + local DB orqali ishlaydi.
+    -2 = bot admin emas yoki boshqa xato
+
+    Kanal uchun FAQAT Pyrogram ishlaydi (Bot API kanal a'zolarini ko'rsatmaydi).
+    Guruh uchun Pyrogram + Bot API+DB fallback mavjud.
     """
     global pyrogram_app
 
-    # ── 1-usul: Pyrogram (eng to'liq scan) ──
+    # ══════════════════════════════════════════════
+    #   1-USUL: PYROGRAM  (kanal ham, guruh ham)
+    # ══════════════════════════════════════════════
     if PYTGCALLS_AVAILABLE and pyrogram_app:
         try:
             total  = 0
             kicked = 0
+
             async for member in pyrogram_app.get_chat_members(chat_id):
                 user = member.user
+                if user is None:
+                    continue
                 total += 1
                 should_kick = False
+
                 if mode == "deleted":
+                    # Pyrogram: is_deleted atributi mavjud
                     if getattr(user, 'is_deleted', False):
                         should_kick = True
+                    # Qo'shimcha tekshiruv: ism ham username ham yo'q
+                    elif not user.first_name and not user.username:
+                        should_kick = True
+
                 elif mode == "foreign":
                     full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
                     if has_arabic_chars(full_name) or has_chinese_chars(full_name):
                         should_kick = True
                     else:
-                        lang = getattr(user, 'language_code', '') or ''
+                        lang = getattr(user, 'language_code', None) or ''
                         if lang.lower().split('-')[0] in FOREIGN_LANG_CODES:
                             should_kick = True
+
                 if should_kick:
                     try:
                         await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
                         await context.bot.unban_chat_member(chat_id=chat_id, user_id=user.id)
                         kicked += 1
-                        await asyncio.sleep(0.4)
-                        logger.info(f"🗑 [{mode}] chiqarildi: {user.id} ({chat_id})")
+                        await asyncio.sleep(0.5)   # Rate limit himoyasi
+                        logger.info(f"✅ [{mode}|pyrogram] chiqarildi: {user.id} ({chat_id})")
                     except Exception as e:
                         logger.error(f"Kick xato user={user.id}: {e}")
-            return total, kicked
-        except Exception as e:
-            logger.error(f"Pyrogram scan xatosi, Bot API fallbackga o'tildi: {e}")
-            # Pyrogram ishlamasa Bot API ga o'tamiz
 
-    # ── 2-usul: Bot API + local DB (Pyrogram bo'lmasa) ──
-    # DB da saqlangan guruh a'zolarini tekshirish
+            return total, kicked
+
+        except Exception as e:
+            logger.error(f"Pyrogram scan xatosi: {e}")
+            # Pyrogram ishlamasa quyidagi fallbackka o'tamiz
+
+    # ══════════════════════════════════════════════
+    #   2-USUL: BOT API + LOCAL DB  (faqat guruh)
+    #   Kanal uchun bu usul ISHLAMAYDI — Pyrogram kerak
+    # ══════════════════════════════════════════════
+
+    # Guruhmi yoki kanalmi?
+    try:
+        chat_info = await context.bot.get_chat(chat_id)
+        is_channel = (chat_info.type == "channel")
+    except Exception:
+        is_channel = False
+
+    if is_channel:
+        # Kanal uchun Bot API a'zolar ro'yxatini bera olmaydi
+        # Pyrogram session yaratish kerak
+        return 0, -3   # -3 = kanal, Pyrogram kerak
+
+    # Guruh uchun DB fallback
     conn = get_db()
-    c = conn.cursor()
+    c    = conn.cursor()
     c.execute("SELECT user_id FROM user_groups WHERE chat_id=?", (chat_id,))
     user_ids = [row[0] for row in c.fetchall()]
     conn.close()
 
+    # DB bo'sh bo'lsa — adminlarni tekshirish
     if not user_ids:
-        # DB da ma'lumot yo'q — hech bo'lmasa adminlarni tekshirish
         try:
             admins = await context.bot.get_chat_administrators(chat_id)
             total  = 0
@@ -1831,21 +1865,21 @@ async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
                         await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
                         await context.bot.unban_chat_member(chat_id=chat_id, user_id=user.id)
                         kicked += 1
-                        await asyncio.sleep(0.4)
+                        await asyncio.sleep(0.5)
                     except Exception as e:
-                        logger.error(f"Admin kick xato user={user.id}: {e}")
+                        logger.error(f"Admin kick xato: {e}")
             return total, kicked
         except Exception as e:
             logger.error(f"get_chat_administrators xatosi: {e}")
             return 0, -2
 
+    # DB dagi a'zolarni birma-bir tekshirish
     total  = 0
     kicked = 0
     for uid in user_ids:
         try:
             member = await context.bot.get_chat_member(chat_id=chat_id, user_id=uid)
             if member.status in ('left', 'kicked', 'banned'):
-                # Guruhda yo'q, DB dan o'chirish
                 conn2 = get_db(); c2 = conn2.cursor()
                 c2.execute("DELETE FROM user_groups WHERE chat_id=? AND user_id=?", (chat_id, uid))
                 conn2.commit(); conn2.close()
@@ -1855,10 +1889,8 @@ async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
             should_kick = False
 
             if mode == "deleted":
-                # O'chirilgan hisob: first_name ham, username ham yo'q
                 if not user.first_name and not user.username:
                     should_kick = True
-
             elif mode == "foreign":
                 if is_foreign_user(user):
                     should_kick = True
@@ -1868,9 +1900,8 @@ async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
                     await context.bot.ban_chat_member(chat_id=chat_id, user_id=uid)
                     await context.bot.unban_chat_member(chat_id=chat_id, user_id=uid)
                     kicked += 1
-                    await asyncio.sleep(0.4)
-                    logger.info(f"🗑 [botapi/{mode}] chiqarildi: {uid} ({chat_id})")
-                    # DB dan ham o'chirish
+                    await asyncio.sleep(0.5)
+                    logger.info(f"✅ [{mode}|botapi] chiqarildi: {uid} ({chat_id})")
                     conn3 = get_db(); c3 = conn3.cursor()
                     c3.execute("DELETE FROM user_groups WHERE chat_id=? AND user_id=?", (chat_id, uid))
                     conn3.commit(); conn3.close()
@@ -1879,9 +1910,7 @@ async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
 
         except TelegramError as e:
             err = str(e).lower()
-            if "user not found" in err or "chat not found" in err:
-                pass
-            else:
+            if "user not found" not in err and "chat not found" not in err:
                 logger.error(f"get_chat_member xato user={uid}: {e}")
         await asyncio.sleep(0.05)
 
@@ -1914,6 +1943,18 @@ async def cmd_tozala(update: Update, context: ContextTypes.DEFAULT_TYPE):
     total, kicked = await scan_and_clean_group(context, chat.id, mode)
     if kicked == -2:
         await msg.edit_text("❌ Xato! Bot guruhda ADMIN ekanligini tekshiring.")
+    elif kicked == -3:
+        await msg.edit_text(
+            "⚠️ <b>Kanal uchun Pyrogram session kerak!</b>\n\n"
+            "Kanal a'zolarini tekshirish uchun Pyrogram userbot session fayli zarur.\n\n"
+            "📋 <b>Qanday qilish:</b>\n"
+            "1️⃣ <code>create_session.py</code> faylini ishga tushiring\n"
+            "2️⃣ Telefon raqamingizni kiriting\n"
+            "3️⃣ SMS kodni kiriting\n"
+            "4️⃣ <code>music_session.session</code> fayli yaratiladi\n"
+            "5️⃣ Botni qayta ishga tushiring",
+            parse_mode=ParseMode.HTML
+        )
     else:
         await msg.edit_text(
             f"✅ <b>Tozalash tugadi!</b>\n\n"
@@ -2359,7 +2400,19 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         total, kicked = await scan_and_clean_group(context, cid, "deleted")
         if kicked == -2:
-            await msg.edit_text("❌ Xato! Bot guruhda ADMIN bo'lishi shart.")
+            await msg.edit_text("❌ Xato! Bot kanalda/guruhda ADMIN bo'lishi shart.")
+        elif kicked == -3:
+            await msg.edit_text(
+                "⚠️ <b>Kanal uchun Pyrogram session kerak!</b>\n\n"
+                "Bot API kanal obunachilarini ko'rsata olmaydi.\n\n"
+                "📋 <b>Yechim:</b>\n"
+                "1️⃣ <code>create_session.py</code> ni ishga tushiring\n"
+                "2️⃣ Telefon raqamingizni kiriting (+998...)\n"
+                "3️⃣ Telegram SMS kodini kiriting\n"
+                "4️⃣ Bot bilan bir papkada <code>music_session.session</code> yaratiladi\n"
+                "5️⃣ Botni qayta ishga tushiring — endi to'liq ishlaydi! ✅",
+                parse_mode=ParseMode.HTML
+            )
         else:
             await msg.edit_text(
                 f"✅ <b>Tozalash tugadi!</b>\n\n"
@@ -2383,7 +2436,19 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         total, kicked = await scan_and_clean_group(context, cid, "foreign")
         if kicked == -2:
-            await msg.edit_text("❌ Xato! Bot guruhda ADMIN bo'lishi shart.")
+            await msg.edit_text("❌ Xato! Bot kanalda/guruhda ADMIN bo'lishi shart.")
+        elif kicked == -3:
+            await msg.edit_text(
+                "⚠️ <b>Kanal uchun Pyrogram session kerak!</b>\n\n"
+                "Bot API kanal obunachilarini ko'rsata olmaydi.\n\n"
+                "📋 <b>Yechim:</b>\n"
+                "1️⃣ <code>create_session.py</code> ni ishga tushiring\n"
+                "2️⃣ Telefon raqamingizni kiriting (+998...)\n"
+                "3️⃣ Telegram SMS kodini kiriting\n"
+                "4️⃣ Bot bilan bir papkada <code>music_session.session</code> yaratiladi\n"
+                "5️⃣ Botni qayta ishga tushiring — endi to'liq ishlaydi! ✅",
+                parse_mode=ParseMode.HTML
+            )
         else:
             await msg.edit_text(
                 f"✅ <b>Tozalash tugadi!</b>\n\n"
