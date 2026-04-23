@@ -49,16 +49,30 @@ from telegram.error import TelegramError
 
 import yt_dlp
 
-# ── PyTgCalls imports ──
+# ── Pyrogram import (session yaratish uchun) ──
+PYROGRAM_AVAILABLE = False
+Client = None
 try:
     from pyrogram import Client
+    PYROGRAM_AVAILABLE = True
+except ImportError:
+    print("⚠️  pyrogram o'rnatilmagan!")
+    print("    pip install pyrogram==2.0.106 tgcrypto")
+
+# ── PyTgCalls import (Voice Chat streaming uchun) ──
+PYTGCALLS_AVAILABLE = False
+PyTgCalls = None
+MediaStream = None
+AudioQuality = None
+try:
     from pytgcalls import PyTgCalls
     from pytgcalls.types import MediaStream, AudioQuality
-    PYTGCALLS_AVAILABLE = True
+    if PYROGRAM_AVAILABLE:
+        PYTGCALLS_AVAILABLE = True
+    else:
+        print("⚠️  pytgcalls o'rnatilgan lekin pyrogram yo'q!")
 except ImportError:
-    PYTGCALLS_AVAILABLE = False
-    print("⚠️  pytgcalls/pyrogram o'rnatilmagan! Faqat fayl yuborish ishlaydi.")
-    print("    pip install pyrogram==2.0.106 pytgcalls")
+    pass  # pytgcalls yo'q bo'lsa ham ishlayveradi (fallback rejim)
 
 
 # ═══════════════════════════════════════════════════════
@@ -1766,7 +1780,7 @@ async def _restart_pyrogram_with_session(session_string: str) -> bool:
     Yangi session string bilan pyrogram_app ni qayta ishga tushirish.
     """
     global pyrogram_app, pytgcalls_client
-    if not PYTGCALLS_AVAILABLE:
+    if not PYROGRAM_AVAILABLE:
         return False
     try:
         # Eski clientni to'xtatish
@@ -1809,7 +1823,7 @@ async def _restart_pyrogram_with_session(session_string: str) -> bool:
 async def session_step1_phone(update, context):
     """Admin telefon raqam yubordi — kodni jo'natish"""
     global _temp_pyro_client
-    if not PYTGCALLS_AVAILABLE:
+    if not PYROGRAM_AVAILABLE:
         await update.message.reply_text("❌ Pyrogram o'rnatilmagan!\npip install pyrogram==2.0.106 tgcrypto")
         return
 
@@ -1987,7 +2001,7 @@ async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
     # ══════════════════════════════════════════════
     #   1-USUL: PYROGRAM  (kanal ham, guruh ham)
     # ══════════════════════════════════════════════
-    if PYTGCALLS_AVAILABLE and pyrogram_app:
+    if PYROGRAM_AVAILABLE and pyrogram_app:
         try:
             total  = 0
             kicked = 0
@@ -2417,6 +2431,15 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         session_file   = os.path.exists("music_session.session") or os.path.exists(".session_string")
         session_string = os.environ.get("SESSION_STRING", "")
         pyro_active    = (pyrogram_app is not None)
+
+        if not PYROGRAM_AVAILABLE:
+            await update.message.reply_text(
+                "❌ <b>Pyrogram o'rnatilmagan!</b>\n\n"
+                "Railway'da <b>requirements.txt</b> faylini tekshiring:\n"
+                "<code>pyrogram==2.0.106\ntgcrypto</code>",
+                parse_mode=ParseMode.HTML
+            )
+            return
 
         status_line = (
             "🟢 <b>Pyrogram aktiv!</b> Kanal tozalash ishlaydi."
@@ -3229,7 +3252,7 @@ def main():
     init_db()
 
     # ── PyTgCalls + Pyrogram ishga tushirish ──
-    if PYTGCALLS_AVAILABLE:
+    if PYROGRAM_AVAILABLE:
         try:
             # ─────────────────────────────────────────────────────────
             #  Session ustuvorligi:
