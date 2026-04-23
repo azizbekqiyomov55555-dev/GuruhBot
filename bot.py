@@ -3319,22 +3319,27 @@ def main():
                     api_hash=API_HASH,
                 )
 
-            pytgcalls_client = PyTgCalls(pyrogram_app)
+            # PyTgCalls faqat o'rnatilgan bo'lsa ishlatiladi
+            if PYTGCALLS_AVAILABLE and PyTgCalls is not None:
+                pytgcalls_client = PyTgCalls(pyrogram_app)
 
-            # Stream tugaganda keyingi qo'shiqni chalish
-            @pytgcalls_client.on_stream_end()
-            async def on_stream_end(client, update):
-                chat_id = update.chat_id
-                current = now_playing.get(chat_id)
-                if current:
-                    try:
-                        if os.path.exists(current.get("file", "")):
-                            os.remove(current["file"])
-                    except Exception:
-                        pass
-                await _play_next(chat_id)
+                # Stream tugaganda keyingi qo'shiqni chalish
+                @pytgcalls_client.on_stream_end()
+                async def on_stream_end(client, update):
+                    chat_id = update.chat_id
+                    current = now_playing.get(chat_id)
+                    if current:
+                        try:
+                            if os.path.exists(current.get('file', '')):
+                                os.remove(current['file'])
+                        except Exception:
+                            pass
+                    await _play_next(chat_id)
 
-            logger.info("✅ PyTgCalls tayyor! Voice Chat streaming ishlaydi.")
+                logger.info('✅ PyTgCalls tayyor! Voice Chat streaming ishlaydi.')
+            else:
+                pytgcalls_client = None
+                logger.info('✅ Pyrogram tayyor! (PyTgCalls yoq - session+kanal tozalash ishlaydi)')
         except Exception as e:
             logger.error(f"PyTgCalls xatosi: {e}")
             pytgcalls_client = None
@@ -3387,28 +3392,20 @@ def main():
     logger.info(f"👥 Yozish uchun taklif: {REQUIRED_INVITES} ta do'st")
     logger.info("=" * 65)
 
-    # ── Ikkalasini parallel ishga tushirish ──
+    # ── Ishga tushirish ──
     async def run_all():
-        if pytgcalls_client and pyrogram_app:
-            await pyrogram_app.start()
-            await pytgcalls_client.start()
-
-            # ─── String session chiqarish (birinchi marta) ───
-            if not os.environ.get("SESSION_STRING"):
-                try:
-                    from pyrogram import Client as _C
-                    exported = await pyrogram_app.export_session_string()
-                    me = await pyrogram_app.get_me()
-                    logger.info("=" * 65)
-                    logger.info(f"✅ Pyrogram: {me.first_name} (@{me.username}) sifatida ulandi!")
-                    logger.info("")
-                    logger.info("🔑 SESSION_STRING (serverda ishlatish uchun saqlang):")
-                    logger.info(f"SESSION_STRING={exported}")
-                    logger.info("")
-                    logger.info("💡 Bu qatorni .env faylga yoki server env'ga qo'shing!")
-                    logger.info("=" * 65)
-                except Exception as e:
-                    logger.error(f"Session string export xatosi: {e}")
+        # Pyrogram ishga tushirish (session + kanal tozalash uchun)
+        if pyrogram_app:
+            try:
+                if pytgcalls_client:
+                    await pyrogram_app.start()
+                    await pytgcalls_client.start()
+                    logger.info("✅ Pyrogram + PyTgCalls ishga tushdi!")
+                else:
+                    await pyrogram_app.start()
+                    logger.info("✅ Pyrogram ishga tushdi! (kanal tozalash ishlaydi)")
+            except Exception as e:
+                logger.error(f"Pyrogram ishga tushishda xato: {e}")
 
         await app.initialize()
         await app.start()
@@ -3426,9 +3423,13 @@ def main():
         await app.updater.stop()
         await app.stop()
         await app.shutdown()
-        if pytgcalls_client and pyrogram_app:
-            await pytgcalls_client.stop()
-            await pyrogram_app.stop()
+        if pyrogram_app:
+            try:
+                if pytgcalls_client:
+                    await pytgcalls_client.stop()
+                await pyrogram_app.stop()
+            except Exception:
+                pass
 
     asyncio.run(run_all())
 
