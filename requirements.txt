@@ -1,2 +1,5 @@
 python-telegram-bot[job-queue]==20.7
+pyrogram==2.0.106
+tgcrypto
+pytgcalls
 yt-dlp
