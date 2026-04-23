@@ -64,9 +64,9 @@ except ImportError:
 # ═══════════════════════════════════════════════════════
 #                    ⚙️ ASOSIY SOZLAMALAR
 # ═══════════════════════════════════════════════════════
-BOT_TOKEN        = "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk")
-ADMIN_IDS        = "ADMIN_IDS", "8537782289").split(",")]
-BOT_NAME         = "@GuruhYordamchIUZBBOT")
+BOT_TOKEN        = os.environ.get("BOT_TOKEN", "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk")
+ADMIN_IDS        = [int(x) for x in os.environ.get("ADMIN_IDS", "8537782289").split(",")]
+BOT_NAME         = os.environ.get("BOT_NAME", "@GuruhYordamchIUZBBOT")
 INVITE_INTERVAL  = 120
 REQUIRED_INVITES = 2
 MUTE_DURATION    = 10
