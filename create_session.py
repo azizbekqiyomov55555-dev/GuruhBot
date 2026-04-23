@@ -1,34 +1,21 @@
 """
-╔══════════════════════════════════════════════════════╗
-║   🔑 PYROGRAM SESSION YARATISH SKRIPTI              ║
-║   Bu skriptni BIR MARTA ishlatib session yarating   ║
-╚══════════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════╗
+║   🔑 PYROGRAM SESSION YARATISH  (bir marta ishlatiladi)     ║
+╚══════════════════════════════════════════════════════════════╝
 
 QANDAY ISHLATILADI:
   1. pip install pyrogram==2.0.106 tgcrypto
   2. python create_session.py
-  3. Telefon raqamingizni kiriting (xalqaro format: +998901234567)
+  3. Telefon raqamingizni kiriting (+998901234567)
   4. Telegram'dan kelgan kodni kiriting
-  5. "music_session.session" fayli yaratiladi
-  6. Bu fayl bot.py bilan BIR PAPKADA bo'lishi kerak!
-
-DIQQAT:
-  - Bu skript sizning SHAXSIY Telegram hisobingiz bilan ishlaydi
-  - Session fayli boshqalarga bermang!
-  - Faqat bir marta ishlatish kerak
+  5. SESSION_STRING chiqadi — uni .env ga yoki serverga qo'ying
 """
 
 import asyncio
 import os
 
-# ══════════════════════════════════════════
-#   BU YERGA O'Z API_ID va API_HASH QOYING
-#   https://my.telegram.org dan olasiz
-# ══════════════════════════════════════════
 API_ID   = int(os.environ.get("API_ID", "37366974"))
 API_HASH = os.environ.get("API_HASH", "08d09c7ed8b7cb414ed6a99c104f1bd6")
-
-SESSION_NAME = "music_session"
 
 
 async def main():
@@ -39,17 +26,13 @@ async def main():
         print("   pip install pyrogram==2.0.106 tgcrypto")
         return
 
-    print("=" * 55)
+    print("=" * 60)
     print("🔑 PYROGRAM SESSION YARATISH")
-    print("=" * 55)
-    print(f"📱 API_ID:   {API_ID}")
-    print(f"🔑 API_HASH: {API_HASH[:8]}...")
-    print(f"💾 Session:  {SESSION_NAME}.session")
-    print("=" * 55)
-    print()
+    print("=" * 60)
 
+    # In-memory session (fayl yaratmaydi)
     app = Client(
-        SESSION_NAME,
+        ":memory:",
         api_id=API_ID,
         api_hash=API_HASH,
     )
@@ -57,25 +40,38 @@ async def main():
     try:
         await app.start()
         me = await app.get_me()
+
+        # String session eksport
+        session_str = await app.export_session_string()
+
         print()
-        print("=" * 55)
-        print(f"✅ SESSION MUVAFFAQIYATLI YARATILDI!")
-        print(f"👤 Hisob: {me.first_name} (@{me.username})")
-        print(f"🆔 ID: {me.id}")
-        print(f"💾 Fayl: {SESSION_NAME}.session")
-        print("=" * 55)
+        print("=" * 60)
+        print(f"✅ MUVAFFAQIYAT! Hisob: {me.first_name} (@{me.username})")
+        print("=" * 60)
         print()
-        print("✅ Endi bu papkada 'music_session.session' fayli bor.")
-        print("✅ Botni ishga tushiring — tozalash to'liq ishlaydi!")
+        print("📋 Quyidagi SESSION_STRING ni nusxalab oling:")
         print()
+        print(f"SESSION_STRING={session_str}")
+        print()
+        print("─" * 60)
+        print("💡 Endi nima qilish kerak:")
+        print()
+        print("  📌 Railway/Render da:")
+        print("     Variables → SESSION_STRING → yuqoridagi qiymat")
+        print()
+        print("  📌 .env fayl yozayotgan bo'lsangiz:")
+        print("     Yuqoridagi SESSION_STRING=... qatorni .env ga qo'ying")
+        print()
+        print("  📌 Oddiy serverda (VPS):")
+        print("     export SESSION_STRING='...'  # yoki .env ga yozing")
+        print()
+        print("  ✅ Keyin botni qayta ishga tushiring!")
+        print("─" * 60)
+
         await app.stop()
+
     except Exception as e:
         print(f"❌ Xato: {e}")
-        print()
-        print("📋 Tekshiring:")
-        print("  1. API_ID va API_HASH to'g'riligini")
-        print("  2. Internet aloqasini")
-        print("  3. Telegram kod to'g'ri kiritilganini")
 
 
 if __name__ == "__main__":
