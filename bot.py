@@ -2050,10 +2050,9 @@ async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
     mode: 'deleted' | 'foreign'
 
     Qaytaradi: (tekshirilgan, chiqarilgan)
-    -2 = bot admin emas yoki boshqa xato
-
-    Kanal uchun FAQAT Pyrogram ishlaydi (Bot API kanal a'zolarini ko'rsatmaydi).
-    Guruh uchun Pyrogram + Bot API+DB fallback mavjud.
+    -2 = bot admin emas
+    -3 = kanal, Pyrogram yo'q
+    str = Pyrogram xato matni
     """
     global pyrogram_app
 
@@ -2062,55 +2061,65 @@ async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
     # ══════════════════════════════════════════════
     if PYROGRAM_AVAILABLE and pyrogram_app:
         try:
-            total  = 0
-            kicked = 0
+            is_conn = pyrogram_app.is_connected
+        except Exception:
+            is_conn = False
 
-            async for member in pyrogram_app.get_chat_members(chat_id):
-                user = member.user
-                if user is None:
-                    continue
-                total += 1
-                should_kick = False
+        if is_conn:
+            try:
+                total  = 0
+                kicked = 0
 
-                if mode == "deleted":
-                    # Pyrogram: is_deleted atributi mavjud
-                    if getattr(user, 'is_deleted', False):
-                        should_kick = True
-                    # Qo'shimcha tekshiruv: ism ham username ham yo'q
-                    elif not user.first_name and not user.username:
-                        should_kick = True
+                async for member in pyrogram_app.get_chat_members(chat_id):
+                    user = member.user
+                    if user is None:
+                        continue
+                    total += 1
+                    should_kick = False
 
-                elif mode == "foreign":
-                    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
-                    if has_arabic_chars(full_name) or has_chinese_chars(full_name):
-                        should_kick = True
-                    else:
-                        lang = getattr(user, 'language_code', None) or ''
-                        if lang.lower().split('-')[0] in FOREIGN_LANG_CODES:
+                    if mode == "deleted":
+                        if getattr(user, 'is_deleted', False):
+                            should_kick = True
+                        elif not user.first_name and not user.username:
                             should_kick = True
 
-                if should_kick:
-                    try:
-                        await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
-                        await context.bot.unban_chat_member(chat_id=chat_id, user_id=user.id)
-                        kicked += 1
-                        await asyncio.sleep(0.5)   # Rate limit himoyasi
-                        logger.info(f"✅ [{mode}|pyrogram] chiqarildi: {user.id} ({chat_id})")
-                    except Exception as e:
-                        logger.error(f"Kick xato user={user.id}: {e}")
+                    elif mode == "foreign":
+                        full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+                        if has_arabic_chars(full_name) or has_chinese_chars(full_name):
+                            should_kick = True
+                        else:
+                            lang = getattr(user, 'language_code', None) or ''
+                            if lang.lower().split('-')[0] in FOREIGN_LANG_CODES:
+                                should_kick = True
 
-            return total, kicked
+                    if should_kick:
+                        try:
+                            await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
+                            await context.bot.unban_chat_member(chat_id=chat_id, user_id=user.id)
+                            kicked += 1
+                            await asyncio.sleep(0.5)
+                            logger.info(f"✅ [{mode}|pyrogram] chiqarildi: {user.id} ({chat_id})")
+                        except Exception as kick_err:
+                            logger.error(f"Kick xato user={user.id}: {kick_err}")
 
-        except Exception as e:
-            logger.error(f"Pyrogram scan xatosi: {e}")
-            # Pyrogram ishlamasa quyidagi fallbackka o'tamiz
+                return total, kicked
+
+            except Exception as e:
+                err_str = str(e)
+                logger.error(f"Pyrogram scan xatosi chat={chat_id}: {err_str}")
+                try:
+                    chat_info2 = await context.bot.get_chat(chat_id)
+                    if chat_info2.type == "channel":
+                        return 0, err_str
+                except Exception:
+                    pass
+        else:
+            logger.warning("Pyrogram ulanmagan, Bot API fallbackga o'tilmoqda")
 
     # ══════════════════════════════════════════════
     #   2-USUL: BOT API + LOCAL DB  (faqat guruh)
-    #   Kanal uchun bu usul ISHLAMAYDI — Pyrogram kerak
     # ══════════════════════════════════════════════
 
-    # Guruhmi yoki kanalmi?
     try:
         chat_info = await context.bot.get_chat(chat_id)
         is_channel = (chat_info.type == "channel")
@@ -2118,8 +2127,6 @@ async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
         is_channel = False
 
     if is_channel:
-        # Kanal uchun Bot API a'zolar ro'yxatini bera olmaydi
-        # Pyrogram session yaratish kerak
         return 0, -3   # -3 = kanal, Pyrogram kerak
 
     # Guruh uchun DB fallback
@@ -2233,13 +2240,14 @@ async def cmd_tozala(update: Update, context: ContextTypes.DEFAULT_TYPE):
     elif kicked == -3:
         await msg.edit_text(
             "⚠️ <b>Kanal uchun Pyrogram session kerak!</b>\n\n"
-            "Kanal a'zolarini tekshirish uchun Pyrogram userbot session fayli zarur.\n\n"
-            "📋 <b>Qanday qilish:</b>\n"
-            "1️⃣ <code>create_session.py</code> faylini ishga tushiring\n"
-            "2️⃣ Telefon raqamingizni kiriting\n"
-            "3️⃣ SMS kodni kiriting\n"
-            "4️⃣ <code>music_session.session</code> fayli yaratiladi\n"
-            "5️⃣ Botni qayta ishga tushiring",
+            "Pyrogram o'rnatilgan lekin kanal a'zolariga kirish imkoni yo'q.\n\n"
+            "💡 Hisobingiz o'sha kanalga qo'shilganligini tekshiring.",
+            parse_mode=ParseMode.HTML
+        )
+    elif isinstance(kicked, str):
+        await msg.edit_text(
+            f"❌ <b>Pyrogram xatosi:</b>\n\n<code>{kicked[:300]}</code>\n\n"
+            f"💡 Ehtimol hisobingiz bu kanalga kirish huquqiga ega emas.",
             parse_mode=ParseMode.HTML
         )
     else:
@@ -2748,13 +2756,14 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif kicked == -3:
             await msg.edit_text(
                 "⚠️ <b>Kanal uchun Pyrogram session kerak!</b>\n\n"
-                "Bot API kanal obunachilarini ko'rsata olmaydi.\n\n"
-                "📋 <b>Yechim:</b>\n"
-                "1️⃣ <code>create_session.py</code> ni ishga tushiring\n"
-                "2️⃣ Telefon raqamingizni kiriting (+998...)\n"
-                "3️⃣ Telegram SMS kodini kiriting\n"
-                "4️⃣ Bot bilan bir papkada <code>music_session.session</code> yaratiladi\n"
-                "5️⃣ Botni qayta ishga tushiring — endi to'liq ishlaydi! ✅",
+                "Pyrogram o'rnatilgan lekin bu kanalga kirish imkoni yo'q.\n\n"
+                "💡 Telegram hisobingiz o'sha kanalga qo'shilganligini tekshiring.",
+                parse_mode=ParseMode.HTML
+            )
+        elif isinstance(kicked, str):
+            await msg.edit_text(
+                f"❌ <b>Pyrogram xatosi:</b>\n\n<code>{kicked[:300]}</code>\n\n"
+                f"💡 Ehtimol hisobingiz bu kanalga kirish huquqiga ega emas.",
                 parse_mode=ParseMode.HTML
             )
         else:
@@ -2784,13 +2793,14 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         elif kicked == -3:
             await msg.edit_text(
                 "⚠️ <b>Kanal uchun Pyrogram session kerak!</b>\n\n"
-                "Bot API kanal obunachilarini ko'rsata olmaydi.\n\n"
-                "📋 <b>Yechim:</b>\n"
-                "1️⃣ <code>create_session.py</code> ni ishga tushiring\n"
-                "2️⃣ Telefon raqamingizni kiriting (+998...)\n"
-                "3️⃣ Telegram SMS kodini kiriting\n"
-                "4️⃣ Bot bilan bir papkada <code>music_session.session</code> yaratiladi\n"
-                "5️⃣ Botni qayta ishga tushiring — endi to'liq ishlaydi! ✅",
+                "Pyrogram o'rnatilgan lekin bu kanalga kirish imkoni yo'q.\n\n"
+                "💡 Telegram hisobingiz o'sha kanalga qo'shilganligini tekshiring.",
+                parse_mode=ParseMode.HTML
+            )
+        elif isinstance(kicked, str):
+            await msg.edit_text(
+                f"❌ <b>Pyrogram xatosi:</b>\n\n<code>{kicked[:300]}</code>\n\n"
+                f"💡 Ehtimol hisobingiz bu kanalga kirish huquqiga ega emas.",
                 parse_mode=ParseMode.HTML
             )
         else:
