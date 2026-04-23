@@ -94,6 +94,9 @@ music_queues: dict = {}
 # { chat_id: {title, file, requester, duration} }  — hozir ijro etilayotgan
 now_playing:  dict = {}
 
+# ── Pyrogram session yaratish uchun vaqtinchalik client ──
+_temp_pyro_client = None
+
 
 # ═══════════════════════════════════════════════════════
 #   🔞 SO'KINISH FILTRI
@@ -619,7 +622,7 @@ def admin_reply_kb():
         ["📢 Broadcast",                "🔔 Kanal sozlash"],
         ["📡 Jonli efir",               "🔗 Taklif boshqaruv"],
         ["🗑 O'chirilganlarni tozala",  "🌍 Xorijiylarni chiqar"],
-        ["⚙️ Auto-tozala sozlash",     ""],
+        ["⚙️ Auto-tozala sozlash",     "🔑 Session yaratish"],
     ], resize_keyboard=True, input_field_placeholder="Amalni tanlang...")
 
 def user_kb(bot_username):
@@ -1754,6 +1757,217 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             )
 
 
+
+# ═══════════════════════════════════════════════════════
+#   🔑 TELEGRAM ORQALI PYROGRAM SESSION YARATISH
+# ═══════════════════════════════════════════════════════
+async def _restart_pyrogram_with_session(session_string: str) -> bool:
+    """
+    Yangi session string bilan pyrogram_app ni qayta ishga tushirish.
+    """
+    global pyrogram_app, pytgcalls_client
+    if not PYTGCALLS_AVAILABLE:
+        return False
+    try:
+        # Eski clientni to'xtatish
+        if pyrogram_app:
+            try:
+                await pyrogram_app.stop()
+            except Exception:
+                pass
+
+        # Yangi client — session string bilan
+        pyrogram_app = Client(
+            "userbot",
+            api_id=API_ID,
+            api_hash=API_HASH,
+            session_string=session_string,
+        )
+        pytgcalls_client = PyTgCalls(pyrogram_app)
+
+        @pytgcalls_client.on_stream_end()
+        async def on_stream_end_new(client, update):
+            cid = update.chat_id
+            cur = now_playing.get(cid)
+            if cur:
+                try:
+                    if os.path.exists(cur.get("file", "")):
+                        os.remove(cur["file"])
+                except Exception:
+                    pass
+            await _play_next(cid)
+
+        await pyrogram_app.start()
+        await pytgcalls_client.start()
+        logger.info("✅ Pyrogram qayta ishga tushirildi (session string bilan)!")
+        return True
+    except Exception as e:
+        logger.error(f"Pyrogram restart xatosi: {e}")
+        return False
+
+
+async def session_step1_phone(update, context):
+    """Admin telefon raqam yubordi — kodni jo'natish"""
+    global _temp_pyro_client
+    if not PYTGCALLS_AVAILABLE:
+        await update.message.reply_text("❌ Pyrogram o'rnatilmagan!\npip install pyrogram==2.0.106 tgcrypto")
+        return
+
+    phone = context.user_data.pop("session_phone_input", update.message.text.strip())
+    msg   = await update.message.reply_text("⏳ Telegram ga kod jo'natilmoqda...")
+
+    try:
+        # Vaqtinchalik in-memory client
+        _temp_pyro_client = Client(
+            ":memory:",
+            api_id=API_ID,
+            api_hash=API_HASH,
+        )
+        await _temp_pyro_client.connect()
+        sent = await _temp_pyro_client.send_code(phone)
+
+        # Keyingi qadam uchun ma'lumotlarni saqlash
+        context.user_data["session_phone"]     = phone
+        context.user_data["session_code_hash"] = sent.phone_code_hash
+        context.user_data["action"]            = "session_enter_code"
+
+        await msg.edit_text(
+            f"✅ <b>Kod yuborildi!</b>\n\n"
+            f"📱 Raqam: <code>{phone}</code>\n\n"
+            f"Telegram'dan kelgan <b>tasdiqlash kodini</b> yuboring:\n"
+            f"<i>Misol: 12345</i>\n\n"
+            f"⚠️ Kod 2 daqiqa ichida amal qiladi!",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Bekor", callback_data="cancel_session")
+            ]])
+        )
+    except Exception as e:
+        err = str(e)
+        if _temp_pyro_client:
+            try: await _temp_pyro_client.disconnect()
+            except Exception: pass
+            _temp_pyro_client = None
+        await msg.edit_text(
+            f"❌ <b>Xato:</b> {err}\n\n"
+            f"Tekshiring:\n"
+            f"• Telefon raqam to'g'rimi? (+998...)\n"
+            f"• Internet aloqasi bormi?\n"
+            f"• API_ID/API_HASH to'g'rimi?",
+            parse_mode=ParseMode.HTML
+        )
+
+
+async def session_step2_code(update, context):
+    """Admin kod yubordi — session yaratish"""
+    global _temp_pyro_client
+
+    code  = update.message.text.strip().replace(" ", "")
+    phone = context.user_data.get("session_phone", "")
+    phash = context.user_data.get("session_code_hash", "")
+
+    msg = await update.message.reply_text("⏳ Session yaratilmoqda...")
+
+    try:
+        await _temp_pyro_client.sign_in(phone, phash, code)
+    except Exception as e:
+        err_str = str(e)
+
+        # 2FA parol so'rash
+        if "SessionPasswordNeeded" in err_str or "password" in err_str.lower():
+            context.user_data["action"] = "session_enter_2fa"
+            await msg.edit_text(
+                "🔐 <b>2FA parol kerak!</b>\n\n"
+                "Telegram hisobingizning ikki qadam tasdiqlash parolini yuboring:",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Bekor", callback_data="cancel_session")
+                ]])
+            )
+            return
+
+        # Noto'g'ri kod
+        if "PHONE_CODE_INVALID" in err_str:
+            context.user_data["action"] = "session_enter_code"
+            await msg.edit_text(
+                "❌ <b>Noto'g'ri kod!</b>\n\n"
+                "Telegram'dan kelgan kodni qaytadan yuboring:",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+        await msg.edit_text(f"❌ Xato: {err_str}")
+        if _temp_pyro_client:
+            try: await _temp_pyro_client.disconnect()
+            except Exception: pass
+            _temp_pyro_client = None
+        return
+
+    # Session muvaffaqiyatli yaratildi
+    await _finish_session_creation(update, context, msg)
+
+
+async def session_step3_2fa(update, context):
+    """2FA parol"""
+    global _temp_pyro_client
+
+    password = update.message.text.strip()
+    msg = await update.message.reply_text("⏳ 2FA tekshirilmoqda...")
+
+    try:
+        await _temp_pyro_client.check_password(password)
+    except Exception as e:
+        await msg.edit_text(f"❌ Noto'g'ri parol: {e}")
+        if _temp_pyro_client:
+            try: await _temp_pyro_client.disconnect()
+            except Exception: pass
+            _temp_pyro_client = None
+        return
+
+    await _finish_session_creation(update, context, msg)
+
+
+async def _finish_session_creation(update, context, msg):
+    """Session string eksport qilish va pyrogram ni qayta ishga tushirish"""
+    global _temp_pyro_client
+
+    try:
+        me             = await _temp_pyro_client.get_me()
+        session_string = await _temp_pyro_client.export_session_string()
+        await _temp_pyro_client.disconnect()
+        _temp_pyro_client = None
+
+        # session_string ni fayl sifatida saqlash
+        with open(".session_string", "w") as f:
+            f.write(session_string)
+
+        # Pyrogram ni yangi session bilan qayta ishga tushirish
+        ok = await _restart_pyrogram_with_session(session_string)
+
+        status = "✅ Pyrogram faol!" if ok else "⚠️ Qayta ishga tushirishda xato — botni restart qiling"
+
+        # context.user_data ni tozalash
+        for k in ["action", "session_phone", "session_code_hash"]:
+            context.user_data.pop(k, None)
+
+        await msg.edit_text(
+            f"🎉 <b>SESSION MUVAFFAQIYATLI YARATILDI!</b>\n\n"
+            f"👤 Hisob: <b>{me.first_name}</b> (@{me.username or '—'})\n"
+            f"🆔 ID: <code>{me.id}</code>\n\n"
+            f"{status}\n\n"
+            f"✅ Endi <b>Kanal tozalash</b> to'liq ishlaydi!\n"
+            f"Kanalning ID sini yuboring va o'chirilganlar chiqariladi.",
+            parse_mode=ParseMode.HTML
+        )
+
+    except Exception as e:
+        await msg.edit_text(f"❌ Session saqlashda xato: {e}")
+        if _temp_pyro_client:
+            try: await _temp_pyro_client.disconnect()
+            except Exception: pass
+            _temp_pyro_client = None
+
+
 # ═══════════════════════════════════════════════════════
 #   🧹 GURUHNI TOZALASH — PYROGRAM ORQALI SCAN
 # ═══════════════════════════════════════════════════════
@@ -2198,7 +2412,55 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             ]))
         return
 
+    if text == "🔑 Session yaratish":
+        # Session holati tekshirish
+        session_file   = os.path.exists("music_session.session") or os.path.exists(".session_string")
+        session_string = os.environ.get("SESSION_STRING", "")
+        pyro_active    = (pyrogram_app is not None)
+
+        status_line = (
+            "🟢 <b>Pyrogram aktiv!</b> Kanal tozalash ishlaydi."
+            if pyro_active else
+            "🔴 <b>Pyrogram session yo'q.</b> Kanal tozalash ishlamaydi."
+        )
+        context.user_data["action"] = "session_enter_phone"
+        await update.message.reply_text(
+            f"🔑 <b>Pyrogram Session Sozlash</b>\n"
+            f"━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"{status_line}\n\n"
+            f"📱 <b>Telefon raqamingizni yuboring:</b>\n"
+            f"<i>Misol: +998901234567</i>\n\n"
+            f"⚠️ Shaxsiy Telegram hisobingiz raqami kerak.\n"
+            f"SMS kod keladi — uni keyingi xabarda yuboring.",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[
+                InlineKeyboardButton("🔙 Bekor", callback_data="cancel_action")
+            ]])
+        )
+        return
+
     # ── Amallar (action) ──
+
+    # ─── Session yaratish amallar ───
+    if action == "session_enter_phone":
+        context.user_data.pop("action", None)
+        phone = text.strip()
+        if not phone.startswith("+"):
+            phone = "+" + phone
+        context.user_data["session_phone_input"] = phone
+        await session_step1_phone(update, context)
+        return
+
+    if action == "session_enter_code":
+        context.user_data.pop("action", None)
+        await session_step2_code(update, context)
+        return
+
+    if action == "session_enter_2fa":
+        context.user_data.pop("action", None)
+        await session_step3_2fa(update, context)
+        return
+
     if action == "check_user":
         context.user_data.pop("action", None)
         try:
@@ -2748,6 +3010,18 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Panel", callback_data="back_admin")]]))
         return
 
+    if d == "cancel_session":
+        global _temp_pyro_client
+        context.user_data.pop("action", None)
+        for k in ["session_phone", "session_code_hash", "session_phone_input"]:
+            context.user_data.pop(k, None)
+        if _temp_pyro_client:
+            try: await _temp_pyro_client.disconnect()
+            except Exception: pass
+            _temp_pyro_client = None
+        await q.edit_message_text("❌ Session yaratish bekor qilindi.")
+        return
+
     if d == "how_to_add":
         bot_info = await context.bot.get_me()
         await q.edit_message_text(
@@ -2963,6 +3237,11 @@ def main():
             #  2. music_session.session  (fayl — lokal ishlatish uchun)
             # ─────────────────────────────────────────────────────────
             session_string = os.environ.get("SESSION_STRING", "").strip()
+
+            # .session_string fayldan ham o'qish
+            if not session_string and os.path.exists(".session_string"):
+                with open(".session_string") as _f:
+                    session_string = _f.read().strip()
 
             if session_string:
                 # String session — server restart bo'lsa ham ishlaydi
