@@ -2,5 +2,4 @@ python-telegram-bot[job-queue]==20.7
 yt-dlp
 pyrogram==2.0.106
 tgcrypto
-pytgcalls
-ffmpeg-python
+py-tgcalls==0.9.4
