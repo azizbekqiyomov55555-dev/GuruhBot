@@ -122,6 +122,58 @@ def contains_bad_word(text: str) -> bool:
 
 
 # ═══════════════════════════════════════════════════════
+#   🗑 O'CHIRILGAN VA 🌍 XORIJIY FOYDALANUVCHILARNI ANIQLASH
+# ═══════════════════════════════════════════════════════
+def is_deleted_account(user) -> bool:
+    """O'chirilgan Telegram hisob tekshirish (first_name va username yo'q)"""
+    return not user.first_name and not user.username
+
+
+def has_arabic_chars(text: str) -> bool:
+    """Arab yozuvi harflari bormi tekshirish"""
+    if not text:
+        return False
+    return any(
+        '\u0600' <= c <= '\u06FF' or  # Arabic
+        '\u0750' <= c <= '\u077F' or  # Arabic Supplement
+        '\u08A0' <= c <= '\u08FF' or  # Arabic Extended-A
+        '\uFB50' <= c <= '\uFDFF' or  # Arabic Presentation Forms-A
+        '\uFE70' <= c <= '\uFEFF'     # Arabic Presentation Forms-B
+        for c in text
+    )
+
+
+def has_chinese_chars(text: str) -> bool:
+    """Xitoy/Yapon/Koreys yozuvi harflari bormi tekshirish"""
+    if not text:
+        return False
+    return any(
+        '\u4E00' <= c <= '\u9FFF' or  # CJK Unified Ideographs
+        '\u3400' <= c <= '\u4DBF' or  # CJK Extension A
+        '\uF900' <= c <= '\uFAFF' or  # CJK Compatibility Ideographs
+        '\u3040' <= c <= '\u309F' or  # Hiragana
+        '\u30A0' <= c <= '\u30FF' or  # Katakana
+        '\uAC00' <= c <= '\uD7AF'     # Hangul Syllables (Koreys)
+        for c in text
+    )
+
+
+# Chiqariladigan til kodlari (language_code bo'yicha)
+FOREIGN_LANG_CODES = {'zh', 'ar', 'fa', 'ur', 'he', 'ko', 'ja', 'bo', 'ug'}
+
+
+def is_foreign_user(user) -> bool:
+    """Xitoy, arab yoki boshqa chiqariladigan xorijiy foydalanuvchi tekshirish"""
+    full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+    if has_arabic_chars(full_name) or has_chinese_chars(full_name):
+        return True
+    lang = getattr(user, 'language_code', '') or ''
+    if lang.lower().split('-')[0] in FOREIGN_LANG_CODES:
+        return True
+    return False
+
+
+# ═══════════════════════════════════════════════════════
 #                  💬 AVTOMATIK JAVOBLAR
 # ═══════════════════════════════════════════════════════
 RESPONSES = {
@@ -251,6 +303,8 @@ def init_db():
     )""")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('channel_username', '')")
     c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('channel_link', '')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_kick_deleted', '1')")
+    c.execute("INSERT OR IGNORE INTO settings (key, value) VALUES ('auto_kick_foreign', '0')")
 
     c.execute("""CREATE TABLE IF NOT EXISTS user_invites (
         chat_id      INTEGER,
@@ -445,6 +499,29 @@ def get_invite_disabled(chat_id: int) -> bool:
     c.execute("SELECT invite_disabled FROM groups WHERE chat_id=?", (chat_id,))
     row = c.fetchone(); conn.close(); return bool(row and row[0])
 
+# ── Auto-kick sozlamalari ──
+def get_auto_kick_deleted() -> bool:
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key='auto_kick_deleted'")
+    row = c.fetchone(); conn.close()
+    return row and row[0] == '1'
+
+def set_auto_kick_deleted(val: bool):
+    conn = get_db(); c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_kick_deleted', ?)", ('1' if val else '0',))
+    conn.commit(); conn.close()
+
+def get_auto_kick_foreign() -> bool:
+    conn = get_db(); c = conn.cursor()
+    c.execute("SELECT value FROM settings WHERE key='auto_kick_foreign'")
+    row = c.fetchone(); conn.close()
+    return row and row[0] == '1'
+
+def set_auto_kick_foreign(val: bool):
+    conn = get_db(); c = conn.cursor()
+    c.execute("INSERT OR REPLACE INTO settings (key, value) VALUES ('auto_kick_foreign', ?)", ('1' if val else '0',))
+    conn.commit(); conn.close()
+
 def get_user_invite_count(chat_id: int, user_id: int) -> int:
     conn = get_db(); c = conn.cursor()
     c.execute("SELECT invite_count FROM user_invites WHERE chat_id=? AND user_id=?", (chat_id, user_id))
@@ -541,6 +618,8 @@ def admin_reply_kb():
         ["🔍 Foydalanuvchi tekshirish", "👥 Guruhlar ro'yxati"],
         ["📢 Broadcast",                "🔔 Kanal sozlash"],
         ["📡 Jonli efir",               "🔗 Taklif boshqaruv"],
+        ["🗑 O'chirilganlarni tozala",  "🌍 Xorijiylarni chiqar"],
+        ["⚙️ Auto-tozala sozlash",     ""],
     ], resize_keyboard=True, input_field_placeholder="Amalni tanlang...")
 
 def user_kb(bot_username):
@@ -778,6 +857,27 @@ async def track_new_member_invite(update: Update, context: ContextTypes.DEFAULT_
        new_status in (ChatMember.MEMBER, ChatMember.ADMINISTRATOR):
         new_member = result.new_chat_member.user
         chat_id    = result.chat.id
+
+        # ── O'chirilgan hisob tekshirish (guruh VA kanal) ──
+        if not new_member.is_bot and is_deleted_account(new_member) and get_auto_kick_deleted():
+            try:
+                await context.bot.ban_chat_member(chat_id=chat_id, user_id=new_member.id)
+                await context.bot.unban_chat_member(chat_id=chat_id, user_id=new_member.id)
+                logger.info(f"🗑 [track] O'chirilgan hisob chiqarildi: {new_member.id} ({result.chat.title})")
+            except Exception as e:
+                logger.error(f"O'chirilgan chiqarishda xato: {e}")
+            return
+
+        # ── Xorijiy foydalanuvchi tekshirish (guruh VA kanal) ──
+        if not new_member.is_bot and get_auto_kick_foreign() and is_foreign_user(new_member):
+            try:
+                await context.bot.ban_chat_member(chat_id=chat_id, user_id=new_member.id)
+                await context.bot.unban_chat_member(chat_id=chat_id, user_id=new_member.id)
+                logger.info(f"🌍 [track] Xorijiy chiqarildi: {new_member.id} ({result.chat.title})")
+            except Exception as e:
+                logger.error(f"Xorijiy chiqarishda xato: {e}")
+            return
+
         invite_link_obj = getattr(result, "invite_link", None)
         if invite_link_obj:
             link_str = getattr(invite_link_obj, "invite_link", None)
@@ -1578,15 +1678,40 @@ async def track_bot(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 # ── Yangi a'zo guruhga qo'shilganda ──
 async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    chat = update.effective_chat
     for member in update.message.new_chat_members:
-        if member.is_bot: continue
+        if member.is_bot:
+            continue
+
+        # ── O'chirilgan hisob tekshirish (har doim chiqariladi) ──
+        if is_deleted_account(member):
+            if get_auto_kick_deleted():
+                try:
+                    await context.bot.ban_chat_member(chat_id=chat.id, user_id=member.id)
+                    await context.bot.unban_chat_member(chat_id=chat.id, user_id=member.id)
+                    logger.info(f"🗑 O'chirilgan hisob chiqarildi: {member.id} ({chat.title})")
+                except Exception as e:
+                    logger.error(f"O'chirilgan hisob chiqarishda xato: {e}")
+            continue
+
+        # ── Xorijiy foydalanuvchi tekshirish (sozlama yoqilgan bo'lsa) ──
+        if get_auto_kick_foreign() and is_foreign_user(member):
+            try:
+                await context.bot.ban_chat_member(chat_id=chat.id, user_id=member.id)
+                await context.bot.unban_chat_member(chat_id=chat.id, user_id=member.id)
+                full_name = f"{member.first_name or ''} {member.last_name or ''}".strip()
+                logger.info(f"🌍 Xorijiy foydalanuvchi chiqarildi: {member.id} ({full_name}) ({chat.title})")
+            except Exception as e:
+                logger.error(f"Xorijiy foydalanuvchi chiqarishda xato: {e}")
+            continue
+
         update_user_seen(member)
-        save_user_in_group(member.id, update.effective_chat.id)
-        add_group(update.effective_chat.id, update.effective_chat.title, update.effective_chat.username)
+        save_user_in_group(member.id, chat.id)
+        add_group(chat.id, chat.title, chat.username)
 
         mn = f'<a href="tg://user?id={member.id}">{member.first_name}</a>'
         ch_username, ch_link = get_channel_settings()
-        invite_count = get_user_invite_count(update.effective_chat.id, member.id)
+        invite_count = get_user_invite_count(chat.id, member.id)
         remaining    = max(0, REQUIRED_INVITES - invite_count)
 
         if ch_username or remaining > 0:
@@ -1610,9 +1735,9 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
             btns = []
             if ch_username and ch_link:
                 btns.append([InlineKeyboardButton(f"📢 {ch_username} — Obuna", url=ch_link)])
-            if not get_invite_disabled(update.effective_chat.id):
+            if not get_invite_disabled(chat.id):
                 btns.append([InlineKeyboardButton("➕ Do'st taklif qilish",
-                                                  callback_data=f"invite_{update.effective_chat.id}")])
+                                                  callback_data=f"invite_{chat.id}")])
             await update.message.reply_text(
                 greet_text, parse_mode=ParseMode.HTML,
                 reply_markup=InlineKeyboardMarkup(btns) if btns else None
@@ -1627,6 +1752,96 @@ async def welcome_new_member(update: Update, context: ContextTypes.DEFAULT_TYPE)
                 random.choice(music_greets),
                 parse_mode=ParseMode.HTML,
             )
+
+
+# ═══════════════════════════════════════════════════════
+#   🧹 GURUHNI TOZALASH — PYROGRAM ORQALI SCAN
+# ═══════════════════════════════════════════════════════
+async def scan_and_clean_group(context, chat_id: int, mode: str) -> tuple:
+    """
+    Guruhdan o'chirilgan yoki xorijiy a'zolarni tozalash.
+    mode: 'deleted' | 'foreign'
+    Qaytaradi: (tekshirilgan, chiqarilgan)  yoki  (0, -1) agar Pyrogram yo'q
+    """
+    global pyrogram_app
+
+    if not PYTGCALLS_AVAILABLE or not pyrogram_app:
+        return 0, -1
+
+    total  = 0
+    kicked = 0
+
+    try:
+        async for member in pyrogram_app.get_chat_members(chat_id):
+            user = member.user
+            total += 1
+            should_kick = False
+
+            if mode == "deleted":
+                if getattr(user, 'is_deleted', False):
+                    should_kick = True
+
+            elif mode == "foreign":
+                full_name = f"{user.first_name or ''} {user.last_name or ''}".strip()
+                if has_arabic_chars(full_name) or has_chinese_chars(full_name):
+                    should_kick = True
+                else:
+                    lang = getattr(user, 'language_code', '') or ''
+                    if lang.lower().split('-')[0] in FOREIGN_LANG_CODES:
+                        should_kick = True
+
+            if should_kick:
+                try:
+                    await context.bot.ban_chat_member(chat_id=chat_id, user_id=user.id)
+                    await context.bot.unban_chat_member(chat_id=chat_id, user_id=user.id)
+                    kicked += 1
+                    await asyncio.sleep(0.4)  # Rate limit himoyasi
+                    logger.info(f"🗑 [{mode}] chiqarildi: {user.id} ({chat_id})")
+                except Exception as e:
+                    logger.error(f"Kick xato user={user.id}: {e}")
+
+    except Exception as e:
+        logger.error(f"scan_and_clean_group xatosi (mode={mode}): {e}")
+        return total, -2  # -2 = scan xatosi
+
+    return total, kicked
+
+
+async def cmd_tozala(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/tozala [deleted|foreign] — guruhni tozalash buyrug'i"""
+    if not is_admin(update.effective_user.id):
+        return
+    chat = update.effective_chat
+    if chat.type not in ("group", "supergroup"):
+        await update.message.reply_text("❌ Bu buyruq faqat guruhda ishlaydi!")
+        return
+    args = context.args
+    mode = args[0].lower() if args else "deleted"
+    if mode not in ("deleted", "foreign"):
+        await update.message.reply_text(
+            "❌ <b>Foydalanish:</b>\n"
+            "/tozala deleted  — O'chirilgan hisoblar\n"
+            "/tozala foreign  — Xitoy/arab foydalanuvchilar",
+            parse_mode=ParseMode.HTML
+        )
+        return
+    label = "O'chirilgan hisoblar" if mode == "deleted" else "Xitoy/Arab foydalanuvchilar"
+    msg = await update.message.reply_text(
+        f"🔄 <b>{label}</b> skanlanmoqda...\nBiroz sabr qiling.",
+        parse_mode=ParseMode.HTML
+    )
+    total, kicked = await scan_and_clean_group(context, chat.id, mode)
+    if kicked == -1:
+        await msg.edit_text("❌ Pyrogram o'rnatilmagan yoki session aktiv emas!")
+    elif kicked == -2:
+        await msg.edit_text("❌ Xato! Bot guruhda admin ekanligini tekshiring.")
+    else:
+        await msg.edit_text(
+            f"✅ <b>Tozalash tugadi!</b>\n\n"
+            f"👥 Tekshirildi: <b>{total}</b> ta a'zo\n"
+            f"🗑 Chiqarildi:  <b>{kicked}</b> ta ({label})",
+            parse_mode=ParseMode.HTML
+        )
 
 
 # ═══════════════════════════════════════════════════════
@@ -1819,6 +2034,50 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await on_callback_invite_manage(update, context)
         return
 
+    if text == "🗑 O'chirilganlarni tozala":
+        context.user_data["action"] = "clean_deleted_chat_id"
+        await update.message.reply_text(
+            "🗑 <b>O'chirilgan hisoblarni tozalash</b>\n\n"
+            "Guruh yoki kanal <b>ID</b>sini yuboring:\n"
+            "<i>Guruh: -1003835671404\n"
+            "Kanal: -1001234567890</i>\n\n"
+            "💡 ID bilish: guruh/kanalga @userinfobot yozing",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
+        return
+
+    if text == "🌍 Xorijiylarni chiqar":
+        context.user_data["action"] = "clean_foreign_chat_id"
+        await update.message.reply_text(
+            "🌍 <b>Xorijiy foydalanuvchilarni chiqarish</b>\n\n"
+            "⚠️ Xitoy, arab, fors, urdu, ibroniy tillaridagi\n"
+            "ismli yoki shu tilli foydalanuvchilar chiqariladi.\n\n"
+            "Guruh yoki kanal <b>ID</b>sini yuboring:\n"
+            "<i>Guruh: -1003835671404\n"
+            "Kanal: -1001234567890</i>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")]]))
+        return
+
+    if text == "⚙️ Auto-tozala sozlash":
+        d_status = "✅ Yoq" if get_auto_kick_deleted() else "❌ O'ch"
+        f_status = "✅ Yoq" if get_auto_kick_foreign() else "❌ O'ch"
+        d_label = "Yoqilgan ✅" if get_auto_kick_deleted() else "O'chirilgan ❌"
+        f_label = "Yoqilgan ✅" if get_auto_kick_foreign() else "O'chirilgan ❌"
+        await update.message.reply_text(
+            "⚙️ <b>Auto-tozala sozlamalari</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🗑 O'chirilgan hisoblar (join bo'lganda): <b>{d_label}</b>\n"
+            f"🌍 Xorijiy foydalanuvchilar (join bo'lganda): <b>{f_label}</b>\n\n"
+            "Quyidagi tugmalar orqali yoq/o'chir:",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"🗑 O'chirilganlar: {d_status}", callback_data="toggle_auto_deleted")],
+                [InlineKeyboardButton(f"🌍 Xorijiylar: {f_status}",    callback_data="toggle_auto_foreign")],
+                [InlineKeyboardButton("🔙 Bekor", callback_data="back_admin")],
+            ]))
+        return
+
     # ── Amallar (action) ──
     if action == "check_user":
         context.user_data.pop("action", None)
@@ -2007,6 +2266,58 @@ async def handle_admin_pm(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text("❌ Noto'g'ri ID!")
         return
 
+    if action == "clean_deleted_chat_id":
+        context.user_data.pop("action", None)
+        try:
+            cid = int(text.strip())
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID! Faqat raqam kiriting.")
+            return
+        msg = await update.message.reply_text(
+            "🔄 <b>O'chirilgan hisoblar skanlanmoqda...</b>\n"
+            "⏳ Bu biroz vaqt olishi mumkin.",
+            parse_mode=ParseMode.HTML
+        )
+        total, kicked = await scan_and_clean_group(context, cid, "deleted")
+        if kicked == -1:
+            await msg.edit_text("❌ Pyrogram o'rnatilmagan yoki session aktiv emas!")
+        elif kicked == -2:
+            await msg.edit_text("❌ Xato! Bot guruhda admin bo'lsin va Pyrogram session aktiv bo'lsin.")
+        else:
+            await msg.edit_text(
+                f"✅ <b>Tozalash tugadi!</b>\n\n"
+                f"👥 Tekshirildi: <b>{total}</b> ta a'zo\n"
+                f"🗑 O'chirilgan hisob chiqarildi: <b>{kicked}</b> ta",
+                parse_mode=ParseMode.HTML
+            )
+        return
+
+    if action == "clean_foreign_chat_id":
+        context.user_data.pop("action", None)
+        try:
+            cid = int(text.strip())
+        except ValueError:
+            await update.message.reply_text("❌ Noto'g'ri ID! Faqat raqam kiriting.")
+            return
+        msg = await update.message.reply_text(
+            "🔄 <b>Xorijiy foydalanuvchilar skanlanmoqda...</b>\n"
+            "⏳ Bu biroz vaqt olishi mumkin.",
+            parse_mode=ParseMode.HTML
+        )
+        total, kicked = await scan_and_clean_group(context, cid, "foreign")
+        if kicked == -1:
+            await msg.edit_text("❌ Pyrogram o'rnatilmagan yoki session aktiv emas!")
+        elif kicked == -2:
+            await msg.edit_text("❌ Xato! Bot guruhda admin bo'lsin va Pyrogram session aktiv bo'lsin.")
+        else:
+            await msg.edit_text(
+                f"✅ <b>Tozalash tugadi!</b>\n\n"
+                f"👥 Tekshirildi: <b>{total}</b> ta a'zo\n"
+                f"🌍 Xorijiy foydalanuvchi chiqarildi: <b>{kicked}</b> ta",
+                parse_mode=ParseMode.HTML
+            )
+        return
+
 
 # ═══════════════════════════════════════════════════════
 #   🔘 INLINE TUGMALAR (Callback)
@@ -2108,6 +2419,55 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         state = "O'CHIRILDI 🔴" if not current_disabled else "YOQILDI 🟢"
         await q.answer(f"Taklif {state}")
         await on_callback_invite_manage(q, context)
+        return
+
+    # ── Auto-tozala toggle ──
+    if d == "toggle_auto_deleted":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True); return
+        new_val = not get_auto_kick_deleted()
+        set_auto_kick_deleted(new_val)
+        state = "YOQILDI ✅" if new_val else "O'CHIRILDI ❌"
+        await q.answer(f"O'chirilgan auto-chiqarish: {state}", show_alert=True)
+        d_status = "✅ Yoq" if get_auto_kick_deleted() else "❌ O'ch"
+        f_status = "✅ Yoq" if get_auto_kick_foreign() else "❌ O'ch"
+        d_lbl = "Yoqilgan ✅" if get_auto_kick_deleted() else "O'chirilgan ❌"
+        f_lbl = "Yoqilgan ✅" if get_auto_kick_foreign() else "O'chirilgan ❌"
+        await q.edit_message_text(
+            "⚙️ <b>Auto-tozala sozlamalari</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🗑 O'chirilgan hisoblar: <b>{d_lbl}</b>\n"
+            f"🌍 Xorijiy foydalanuvchilar: <b>{f_lbl}</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"🗑 O'chirilganlar: {d_status}", callback_data="toggle_auto_deleted")],
+                [InlineKeyboardButton(f"🌍 Xorijiylar: {f_status}",    callback_data="toggle_auto_foreign")],
+                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")],
+            ]))
+        return
+
+    if d == "toggle_auto_foreign":
+        if not is_admin(user.id):
+            await q.answer("❌ Ruxsat yo'q!", show_alert=True); return
+        new_val = not get_auto_kick_foreign()
+        set_auto_kick_foreign(new_val)
+        state = "YOQILDI ✅" if new_val else "O'CHIRILDI ❌"
+        await q.answer(f"Xorijiy auto-chiqarish: {state}", show_alert=True)
+        d_status = "✅ Yoq" if get_auto_kick_deleted() else "❌ O'ch"
+        f_status = "✅ Yoq" if get_auto_kick_foreign() else "❌ O'ch"
+        d_lbl = "Yoqilgan ✅" if get_auto_kick_deleted() else "O'chirilgan ❌"
+        f_lbl = "Yoqilgan ✅" if get_auto_kick_foreign() else "O'chirilgan ❌"
+        await q.edit_message_text(
+            "⚙️ <b>Auto-tozala sozlamalari</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━\n\n"
+            f"🗑 O'chirilgan hisoblar: <b>{d_lbl}</b>\n"
+            f"🌍 Xorijiy foydalanuvchilar: <b>{f_lbl}</b>",
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton(f"🗑 O'chirilganlar: {d_status}", callback_data="toggle_auto_deleted")],
+                [InlineKeyboardButton(f"🌍 Xorijiylar: {f_status}",    callback_data="toggle_auto_foreign")],
+                [InlineKeyboardButton("🔙 Orqaga", callback_data="back_admin")],
+            ]))
         return
 
     # ── Obuna tekshiruvi ──
@@ -2499,6 +2859,7 @@ def main():
     app.add_handler(CommandHandler("skip",   cmd_skip))
     app.add_handler(CommandHandler("stop",   cmd_stop))
     app.add_handler(CommandHandler("queue",  cmd_queue))
+    app.add_handler(CommandHandler("tozala", cmd_tozala))
 
     app.add_handler(ChatMemberHandler(track_bot,               ChatMemberHandler.MY_CHAT_MEMBER))
     app.add_handler(ChatMemberHandler(track_new_member_invite, ChatMemberHandler.CHAT_MEMBER))
