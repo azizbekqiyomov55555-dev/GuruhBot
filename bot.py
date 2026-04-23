@@ -1869,14 +1869,51 @@ async def session_step1_phone(update, context):
             try: await _temp_pyro_client.disconnect()
             except Exception: pass
             _temp_pyro_client = None
-        await msg.edit_text(
-            f"❌ <b>Xato:</b> {err}\n\n"
-            f"Tekshiring:\n"
-            f"• Telefon raqam to'g'rimi? (+998...)\n"
-            f"• Internet aloqasi bormi?\n"
-            f"• API_ID/API_HASH to'g'rimi?",
-            parse_mode=ParseMode.HTML
-        )
+
+        # Railway IP bloki yoki boshqa server xatosi
+        ip_blocked = any(x in err.upper() for x in [
+            "AUTH_RESTART", "FLOOD", "BANNED", "DC_ID_INVALID",
+            "CONNECTION", "TIMEOUT", "NETWORK", "PHONE_NUMBER_BANNED"
+        ])
+
+        if ip_blocked or not err:
+            await msg.edit_text(
+                "🚫 <b>Railway serveri Telegram tomonidan bloklangan!</b>\n\n"
+                "Bu muammoni bot orqali hal qilib bo'lmaydi.\n\n"
+                "✅ <b>Yechim — Google Colab orqali (BEPUL):</b>\n\n"
+                "1️⃣ Telefondan: <b>colab.research.google.com</b> oching\n"
+                "2️⃣ <b>+ New notebook</b> bosing\n"
+                "3️⃣ Quyidagi kodni kataklarga yozing va ishga tushiring:\n\n"
+                "<code>!pip install pyrogram==2.0.106 tgcrypto -q</code>\n\n"
+                "Keyin yangi katakka:\n"
+                "<code>from pyrogram import Client\n"
+                "import asyncio\n\n"
+                "async def run():\n"
+                "    async with Client(':memory:',\n"
+                "        api_id=37366974,\n"
+                "        api_hash='08d09c7ed8b7cb414ed6a99c104f1bd6'\n"
+                "    ) as app:\n"
+                "        print(await app.export_session_string())\n\n"
+                "asyncio.run(run())</code>\n\n"
+                "4️⃣ Chiqgan uzun stringni <b>Railway → Variables → SESSION_STRING</b> ga qo'shing",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Bekor", callback_data="cancel_session")
+                ]])
+            )
+        else:
+            await msg.edit_text(
+                f"❌ <b>Xato:</b> <code>{err[:200]}</code>\n\n"
+                f"Tekshiring:\n"
+                f"• Telefon raqam to'g'rimi? (+998...)\n"
+                f"• Internet aloqasi bormi?\n"
+                f"• API_ID/API_HASH to'g'rimi?\n\n"
+                f"⚠️ Agar qayta-qayta xato bo'lsa, Google Colab usulini ishlating.",
+                parse_mode=ParseMode.HTML,
+                reply_markup=InlineKeyboardMarkup([[
+                    InlineKeyboardButton("🔙 Bekor", callback_data="cancel_session")
+                ]])
+            )
 
 
 async def session_step2_code(update, context):
