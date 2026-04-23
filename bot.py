@@ -79,7 +79,7 @@ except ImportError:
 #                    ⚙️ ASOSIY SOZLAMALAR
 # ═══════════════════════════════════════════════════════
 BOT_TOKEN        = os.environ.get("BOT_TOKEN", "8780908767:AAEewN-jTc2_19hUZRu9mf-qudBTKM2A8Gk")
-ADMIN_IDS        = [int(x) for x in os.environ.get("ADMIN_IDS", "8332077004").split(",")]
+ADMIN_IDS        = [int(x) for x in os.environ.get("ADMIN_IDS", "8537782289").split(",")]
 BOT_NAME         = os.environ.get("BOT_NAME", "@GuruhYordamchIUZBBOT")
 INVITE_INTERVAL  = 120
 REQUIRED_INVITES = 2
@@ -1797,22 +1797,29 @@ async def _restart_pyrogram_with_session(session_string: str) -> bool:
             api_hash=API_HASH,
             session_string=session_string,
         )
-        pytgcalls_client = PyTgCalls(pyrogram_app)
 
-        @pytgcalls_client.on_stream_end()
-        async def on_stream_end_new(client, update):
-            cid = update.chat_id
-            cur = now_playing.get(cid)
-            if cur:
-                try:
-                    if os.path.exists(cur.get("file", "")):
-                        os.remove(cur["file"])
-                except Exception:
-                    pass
-            await _play_next(cid)
+        # PyTgCalls faqat o'rnatilgan bo'lsa ishlatiladi
+        if PYTGCALLS_AVAILABLE and PyTgCalls is not None:
+            pytgcalls_client = PyTgCalls(pyrogram_app)
 
-        await pyrogram_app.start()
-        await pytgcalls_client.start()
+            @pytgcalls_client.on_stream_end()
+            async def on_stream_end_new(client, update):
+                cid = update.chat_id
+                cur = now_playing.get(cid)
+                if cur:
+                    try:
+                        if os.path.exists(cur.get("file", "")):
+                            os.remove(cur["file"])
+                    except Exception:
+                        pass
+                await _play_next(cid)
+
+            await pyrogram_app.start()
+            await pytgcalls_client.start()
+        else:
+            await pyrogram_app.start()
+            pytgcalls_client = None
+
         logger.info("✅ Pyrogram qayta ishga tushirildi (session string bilan)!")
         return True
     except Exception as e:
@@ -1958,21 +1965,36 @@ async def _finish_session_creation(update, context, msg):
         # Pyrogram ni yangi session bilan qayta ishga tushirish
         ok = await _restart_pyrogram_with_session(session_string)
 
-        status = "✅ Pyrogram faol!" if ok else "⚠️ Qayta ishga tushirishda xato — botni restart qiling"
+        status = "✅ Pyrogram faol!" if ok else "⚠️ Qayta ishga tushirishda xato"
 
         # context.user_data ni tozalash
         for k in ["action", "session_phone", "session_code_hash"]:
             context.user_data.pop(k, None)
 
+        # SESSION_STRING ni adminga yuborish
         await msg.edit_text(
             f"🎉 <b>SESSION MUVAFFAQIYATLI YARATILDI!</b>\n\n"
             f"👤 Hisob: <b>{me.first_name}</b> (@{me.username or '—'})\n"
             f"🆔 ID: <code>{me.id}</code>\n\n"
             f"{status}\n\n"
-            f"✅ Endi <b>Kanal tozalash</b> to'liq ishlaydi!\n"
-            f"Kanalning ID sini yuboring va o'chirilganlar chiqariladi.",
+            f"🔑 <b>SESSION_STRING ni Railway Variables ga qo'shing:</b>\n\n"
+            f"<code>{session_string[:100]}...</code>\n\n"
+            f"📌 Railway → GuruhBot → Variables:\n"
+            f"<code>SESSION_STRING</code> = (to'liq qiymat)",
             parse_mode=ParseMode.HTML
         )
+
+        # To'liq SESSION_STRING ni alohida xabar sifatida yuborish
+        try:
+            await context.bot.send_message(
+                chat_id=update.effective_user.id,
+                text=f"🔑 <b>SESSION_STRING (to'liq):</b>\n\n<code>{session_string}</code>\n\n"
+                     f"📋 Bu qiymatni Railway → Variables ga qo'shing:\n"
+                     f"Key: <code>SESSION_STRING</code>\nValue: yuqoridagi kod",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception:
+            pass
 
     except Exception as e:
         await msg.edit_text(f"❌ Session saqlashda xato: {e}")
