@@ -3309,18 +3309,13 @@ def main():
                 logger.info("✅ Pyrogram: music_session.session fayli topildi!")
 
             else:
-                # Session yo'q — interaktiv yaratish (terminal orqali)
+                # Session yo'q — bot orqali yaratish mumkin ("🔑 Session yaratish")
                 logger.warning("⚠️ Pyrogram session topilmadi!")
-                logger.warning("   Terminal orqali yaratilmoqda...")
-                logger.warning("   Telefon raqamingizni kiriting (+998...)")
-                pyrogram_app = Client(
-                    "music_session",
-                    api_id=API_ID,
-                    api_hash=API_HASH,
-                )
+                logger.warning("   Bot admin panelidagi '🔑 Session yaratish' tugmasini bosing!")
+                pyrogram_app = None
 
-            # PyTgCalls faqat o'rnatilgan bo'lsa ishlatiladi
-            if PYTGCALLS_AVAILABLE and PyTgCalls is not None:
+            # PyTgCalls faqat pyrogram va o'rnatilgan bo'lsa ishlatiladi
+            if pyrogram_app and PYTGCALLS_AVAILABLE and PyTgCalls is not None:
                 pytgcalls_client = PyTgCalls(pyrogram_app)
 
                 # Stream tugaganda keyingi qo'shiqni chalish
@@ -3341,11 +3336,11 @@ def main():
                 pytgcalls_client = None
                 logger.info('✅ Pyrogram tayyor! (PyTgCalls yoq - session+kanal tozalash ishlaydi)')
         except Exception as e:
-            logger.error(f"PyTgCalls xatosi: {e}")
+            logger.error(f"Pyrogram/PyTgCalls xatosi: {e}")
             pytgcalls_client = None
-            pyrogram_app = None
+            # pyrogram_app ni None qilmaymiz — session uchun kerak bo'lishi mumkin
     else:
-        logger.warning("⚠️ PyTgCalls o'rnatilmagan! Faqat fayl yuborish ishlaydi.")
+        logger.warning("⚠️ Pyrogram o'rnatilmagan! Session va kanal tozalash ishlamaydi.")
 
     # ── PTB application ──
     app = Application.builder().token(BOT_TOKEN).build()
@@ -3394,6 +3389,13 @@ def main():
 
     # ── Ishga tushirish ──
     async def run_all():
+        global pyrogram_app
+        # SESSION_STRING holati log
+        _ss = os.environ.get("SESSION_STRING", "").strip()
+        logger.info(f"🔑 SESSION_STRING: {'✅ MAVJUD (' + str(len(_ss)) + ' chars)' if _ss else '❌ YOQ'}")
+        logger.info(f"🤖 Pyrogram: {'✅ o\'rnatilgan' if PYROGRAM_AVAILABLE else '❌ o\'rnatilmagan'}")
+        logger.info(f"📦 pyrogram_app: {'✅ tayyor' if pyrogram_app else '❌ None'}")
+
         # Pyrogram ishga tushirish (session + kanal tozalash uchun)
         if pyrogram_app:
             try:
@@ -3404,8 +3406,11 @@ def main():
                 else:
                     await pyrogram_app.start()
                     logger.info("✅ Pyrogram ishga tushdi! (kanal tozalash ishlaydi)")
+                me = await pyrogram_app.get_me()
+                logger.info(f"👤 Pyrogram hisob: {me.first_name} (@{me.username})")
             except Exception as e:
                 logger.error(f"Pyrogram ishga tushishda xato: {e}")
+                pyrogram_app = None
 
         await app.initialize()
         await app.start()
