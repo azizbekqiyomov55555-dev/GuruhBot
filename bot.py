@@ -3393,7 +3393,8 @@ def main():
         # SESSION_STRING holati log
         _ss = os.environ.get("SESSION_STRING", "").strip()
         logger.info(f"🔑 SESSION_STRING: {'✅ MAVJUD (' + str(len(_ss)) + ' chars)' if _ss else '❌ YOQ'}")
-        logger.info(f"🤖 Pyrogram: {'✅ o\'rnatilgan' if PYROGRAM_AVAILABLE else '❌ o\'rnatilmagan'}")
+        _pyro_status = "✅ o'rnatilgan" if PYROGRAM_AVAILABLE else "❌ o'rnatilmagan"
+        logger.info(f"🤖 Pyrogram: {_pyro_status}")
         logger.info(f"📦 pyrogram_app: {'✅ tayyor' if pyrogram_app else '❌ None'}")
 
         # Pyrogram ishga tushirish (session + kanal tozalash uchun)
