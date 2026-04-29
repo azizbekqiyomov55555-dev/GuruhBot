@@ -1,0 +1,24 @@
+# fly.io konfiguratsiyasi — Telegram bot uchun
+app = "obmen-bot"
+primary_region = "fra"
+
+[build]
+
+[env]
+  PYTHONUNBUFFERED = "1"
+
+# Bot uchun HTTP server kerak emas — faqat background process
+[processes]
+  app = "python -u bot.py"
+
+# Doimiy disk (SQLite bazasi va session uchun)
+[mounts]
+  source = "bot_data"
+  destination = "/data"
+
+# Resurslar (bepul tier)
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
